@@ -1,0 +1,27 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1565026681013.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "4218125575",
+    "id" : "10A182",
+    "lastKnownWriteTime" : 1565043278,
+    "last_content_update" : 1565043278090,
+    "path" : "/mnt/Data/caso_20181122/01_prueba_asim.Rmd",
+    "project_path" : "01_prueba_asim.Rmd",
+    "properties" : {
+        "cursorPosition" : "103,0",
+        "last_setup_crc32" : "3BB4909C36eef41d",
+        "scrollLine" : "103",
+        "tempName" : "Untitled1"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}

@@ -1,0 +1,51 @@
+"0","knitr::opts_chunk$set(echo = TRUE)"
+"0","library(ggplot2)"
+"2","Registered S3 method overwritten by 'dplyr':
+  method           from
+  print.rowwise_df     
+"
+"2","Use suppressPackageStartupMessages() to eliminate package startup messages.
+"
+"0","library(metR)"
+"2","Registered S3 method overwritten by 'data.table':
+  method           from
+  print.data.table     
+"
+"0","library(data.table)"
+"2","data.table 1.12.2 using 4 threads (see ?getDTthreads).  Latest news: r-datatable.com
+"
+"0","library(dplyr)"
+"2","
+Attaching package: ‘dplyr’
+
+"
+"2","The following objects are masked from ‘package:data.table’:
+
+    between, first, last
+
+"
+"2","The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+"
+"0","library(lubridate)"
+"2","
+Attaching package: ‘lubridate’
+
+"
+"2","The following objects are masked from ‘package:data.table’:
+
+    hour, isoweek, mday, minute, month, quarter, second, wday, week, yday, year
+
+"
+"2","The following object is masked from ‘package:base’:
+
+    date
+
+"
