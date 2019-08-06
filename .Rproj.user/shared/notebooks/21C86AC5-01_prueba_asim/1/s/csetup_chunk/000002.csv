@@ -1,11 +1,5 @@
 "0","knitr::opts_chunk$set(echo = TRUE)"
 "0","library(ggplot2)"
-"2","Registered S3 method overwritten by 'dplyr':
-  method           from
-  print.rowwise_df     
-"
-"2","Use suppressPackageStartupMessages() to eliminate package startup messages.
-"
 "0","library(metR)"
 "2","Registered S3 method overwritten by 'data.table':
   method           from
@@ -49,3 +43,6 @@ Attaching package: ‘lubridate’
     date
 
 "
+"0","library(patchwork)"
+"0",""
+"0","map <- rnaturalearth::ne_states(country = ""argentina"", returnclass = ""sf"")"

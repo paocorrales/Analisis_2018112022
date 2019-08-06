@@ -14,7 +14,9 @@ library(dplyr)
 library(lubridate)
 library(patchwork)
 
-map <- rnaturalearth::ne_states(country = "argentina", returnclass = "sf")
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+proj <- paste0("+proj=lcc +lat_1=-30.966 +lat_2=-30.966 +lat_0=-30.966 +lon_0=-63.567",
+                    " +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
 ```
 
 # Primera prueba
@@ -28,16 +30,21 @@ files <- Sys.glob("E1/diagfiles/asim*")
 
 obs <- lapply(files, function(f) {
   date_time <- ymd_hms(substr(basename(f), 11, 24))
+  ens <- substr(basename(f), 29, 31)
   fread(f, na.strings = c("1e+10", "10000000000.00", "-99999.90")) %>% 
     .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
     .[]
 }) %>% 
   rbindlist() %>% 
   .[, c("V2", "V4") := NULL]
 
-colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "date.time")
+colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "date.time", "ens")
 
 ```
+
+Si analizamos la cantidad de observaciones para cada tiempo, no se ve mucha diferencia. Los tipos 131, 181 y 281 son los mas abundantes (seguramente la mayoría de obs 181 y 281 provienen de las estaciones automáticas que agregamos). 
+Pero en realidad acá tenemos los 10 miembros del emsable juntos, si contamos la cantidad de observaciones en el diag de cada miembro nos da lo mismo. Suena raro pero revisé los diag y si bien tienen la misma cantidad de observaciones, la diferencia entre la observación y el guess cambia. Es posible que haya algo en el código que primero seleccione las observaciones a comparar con el guess? Tal vez ese trabajo lo hace cuando calcula el diag para la media. 
 
 ```{r}
 obs[, .N, by = .(var, type)] %>% 
@@ -45,7 +52,16 @@ obs[, .N, by = .(var, type)] %>%
   geom_col(position = "dodge") +
   # scale_fill_viridis_d() +
   scale_y_log10() +
-  facet_wrap(~var, scales = "free")
+  facet_wrap(~var, scales = "free") +
+
+obs[var == "t" & type == 181 & ens == "001", .N, by = .(stationID, lon, lat)] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_sf(data = map, inherit.aes = FALSE) +
+  geom_point(aes(fill = N, size = N), shape = 21) +
+  scale_size_area(max_size = 3, guide = "none") +
+  coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
+  labs(title = "Distribución de estaciones y \ncantididad de observaciones en cada una", x = "lon") +
+  theme(legend.position = "bottom")
 ```
 
 En los diag se guarda la diferencia entre la observación y el guess. Si todo anda más o menos bien sería deseable que los valores de esta diferencia esten centrados alrededor de 0 con una distribucón más o menos gausiana.
@@ -63,13 +79,15 @@ obs[usage.flag == 1] %>%
   facet_wrap(~var, scales = "free")
 ```
 
-Es importante filtrar las observaciones con usage.flag == 1 porque son las asimiladas. El resto claramente es horrrible y sería interesante ver de donde vienen esas. Pero mientras, la distribución parece más o menos razonable aunque con bias positivo o negativo dependiendo de la variable. Es preocupante la asimeria de la temperatura, donde se ve una diferencia entre la observación y el guess de 20 o 30 grados! Cómo será la magnitud del error en estos casos?
+Es importante filtrar las observaciones con usage.flag == 1 porque son las ¿asimiladas? (no se si enkf las usa directamente o hace un nuevo control de calidad). Las obs con usage.flag == -1 es claramente es horrrible y sería interesante ver el origen de esas observaciones. Pero mientras, la distribución parece más o menos razonable aunque con bias positivo o negativo dependiendo de la variable. Es preocupante la asimeria de la temperatura, donde se ve una diferencia entre la observación y el guess de 20 o 30 grados! 
 
-No tengo idea que está pasando con las observaciones de temperatura que tienen error 0 pero son los que tienen una diferencia mayor con el guess. Vamos a mirarlas más de cerca analizando la fuente.
+Los diags también guardan una medida del error, de donde sale eso? Es un poco más difícil de responder. En principio toma el error de la observación que vienen en el prepbufr (caso GLOBAL) o de la tabla *errtable* (caso REGIONAL). Pero luego define un nuevo error buscando el máximo entre el error original y el error de la tabla *convinfo* ¿que va a ser utilizando en el gross check?. Lo que guarda en el diag es el error original o si es muy si es muy pequeño un `huge_single` que es básicamente cero. 
 
-Bueno, 181 es el tipo de observaciones que agrego manualmente al prepbufr. Es posible que no todas las observaciones 181 sean de la red de estaciones automáticas porque no revisé el prepbufr antes de agregarlas, pero seguro son la mayoría.
+No tengo idea que está pasando con las observaciones de temperatura que tienen error 0 pero son los que tienen una diferencia mayor con el guess. Vamos a mirarlas más de cerca analizando de donde vienen.
 
-Y son las 181 las causantes de la asimetría en la distribución aunque definitivamente también se ven cosas raras para las observaciones 180! Vamos a aislar las observaciones de temperatura que caen en la cola de la distribución.
+181 es el tipo de observaciones de temperatura y humedad que agrego manualmente al prepbufr. Es posible que no todas las observaciones 181 sean de la red de estaciones automáticas porque no revisé el prepbufr antes de agregarlas, pero seguro son la mayoría. Y estas observaciones las causantes de la asimetría en la distribución del obs.guess de la temperatura; aunque definitivamente también se ven cosas raras para las observaciones 180! 
+
+Al revisar la tabla *errtable* se ve que las observaciones 181 tienen un error de 1.5ºC  para todos los niveles, con lo cual las observaciones con error cero que se ve, seguramente no cumplen alguno de los requisitos y le asignan un nuevo error. De todas maneras no parece ser un problema constante. 
 
 ```{r}
 obs[usage.flag == 1 & var == "t" & abs(dhr) <= 0.5] %>% 
@@ -77,7 +95,10 @@ obs[usage.flag == 1 & var == "t" & abs(dhr) <= 0.5] %>%
   geom_density(aes(group = type, color = factor(type)))
 ```
 
-Las casi 700 observaciones "malas" están distribuidas en solo 13 estaciones. Hay una "INT511" que tiene más de 150 de estas observaciones!
+
+Vamos a aislar las observaciones de temperatura que caen en la cola de la distribución.
+
+Las casi 700 observaciones "malas" están distribuidas en solo 13 estaciones (de más de 400). Hay una "INT511" que tiene más de 150 de estas observaciones malas!
 
 ```{r}
 stations <- obs[usage.flag == 1 & var == "t" & type == 181 & obs.guess > 10] %>% 
@@ -90,16 +111,57 @@ obs[usage.flag == 1 & var == "t" & type == 181 & obs.guess > 10 & abs(dhr) <= 0.
   geom_point(aes(size = N), alpha = 0.5) +
   ggrepel::geom_label_repel(data = stations, aes(label = stationID), nudge_y = 2, alpha = 0.5) +
   labs(x = "lon") +
-  coord_sf(ylim = c(-43, -20))
+  coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) 
 
 ```
+
+## Analisis de los análisis y el emsamble
 
 ```{r}
-obs[stationID == "INT511" & obs.guess > 10 & abs(dhr) <= 0.5] %>% 
-  ggplot(aes(date.time, obs.guess)) +
-  geom_point()
+files <- Sys.glob("E1/ANA/*/analysis.mem*")
 
+ana_T2 <- lapply(files, function(f) {
+  date_time <- ymd_hms(substr(f, 8, 21))
+  ens <- substr(basename(f), 13, 15)
+  ReadNetCDF(f, vars = c("T2", "XLAT", "XLONG")) %>% 
+    .[, c("Time", "south_north", "west_east") := NULL] %>% 
+    .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
+    .[]
+}) %>% 
+  rbindlist()
 
+colnames(ana_T2) <- c("var", "lat", "lon", "date.time", "ens")
+```
+
+Calculemos la media y el spread del ensamble para cada tiempo.
+
+```{r}
+ana_T2_sum <- ana_T2[, .(mean = mean(var), spread = sd(var)), by = .(lon, lat, date.time)]
+
+ana_T2_sum[mean > 260] %>% 
+  copy() %>% 
+  .[, date.time := factor(date.time)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = mean - 273.15)) +
+  scale_color_distiller(name = "Mean", type = "seq", palette = "YlGnBu", direction = -1) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA) +
+  coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
+  facet_wrap(~ date.time) +
+  theme(legend.position = "bottom") +
+
+ana_T2_sum[mean > 260 & spread < 2.5] %>% 
+  copy() %>% 
+  .[, date.time := factor(date.time)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = spread)) +
+  scale_color_distiller(name = "Spread", type = "seq", palette = "YlGnBu", direction = -1) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA) +
+  coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
+  facet_wrap(~ date.time) +
+  theme(legend.position = "bottom")
 
 ```
+
+
 
