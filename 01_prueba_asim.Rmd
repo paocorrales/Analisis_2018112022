@@ -31,7 +31,7 @@ files <- Sys.glob("E1/diagfiles/asim*")
 obs <- lapply(files, function(f) {
   date_time <- ymd_hms(substr(basename(f), 11, 24))
   ens <- substr(basename(f), 29, 31)
-  fread(f, na.strings = c("1e+10", "10000000000.00", "-99999.90")) %>% 
+  fread(f, na.strings = c("0.100E+11", "-0.100E+06", "-99999.90", "-100000.00")) %>% 
     .[, date.time := date_time] %>% 
     .[, ens := ens] %>% 
     .[]
@@ -115,6 +115,24 @@ obs[usage.flag == 1 & var == "t" & type == 181 & obs.guess > 10 & abs(dhr) <= 0.
 
 ```
 
+```{r}
+
+obs[usage.flag == 1, .(rmsi = sqrt(sum(obs.guess)^2/.N)), by = .(lon, lat, date.time)] %>% 
+  copy() %>% 
+  .[, date.time := factor(date.time)] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_sf(data = map, inherit.aes = FALSE) +
+  geom_point(aes(color = rmsi)) +
+  scale_color_distiller(name = "RMSI", type = "seq", 
+                        palette = "YlGnBu", direction = -1,
+                        limits = c(0, 50)) +
+  coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
+  facet_wrap(~ date.time) +
+  theme(legend.position = "bottom")
+
+```
+
+
 ## Analisis de los análisis y el emsamble
 
 ```{r}
@@ -163,5 +181,37 @@ ana_T2_sum[mean > 260 & spread < 2.5] %>%
 
 ```
 
+Hay algunos poquitos puntos que se van de escala con temperaturas de casi -30º y spread super alto. Los saco para ver el resto de los detalles pero habría que revisar que puede estar pasando. Si analizamos la diferencia entre la media del ensamble y cada miembro --> `anom` también encuentro que hay algunos puntos con valores muy altos y eso no me deja ver mucho. 
 
+```{r}
+ana_T2[, c("mean", "spread") := .(mean(var), sd(var)), by = .(lon, lat, date.time)] %>% 
+  .[, anom := var - mean] %>% 
+  copy() %>% 
+  .[, date.time := factor(date.time)] %>% 
+  .[abs(anom) < 3] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = anom)) +
+  scale_color_divergent(name = "Anomalia") +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA) +
+  coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
+  facet_grid(date.time ~ ens) +
+  theme(legend.position = "bottom")
+  
+```
+
+Alguien me explica por favor porque los valores altos de anomalía están en la costa???!!!
+```{r}
+ana_T2[, c("mean", "spread") := .(mean(var), sd(var)), by = .(lon, lat, date.time)] %>% 
+  .[, anom := var - mean] %>% 
+  copy() %>% 
+  .[, date.time := factor(date.time)] %>% 
+  .[abs(anom) > 3] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = anom)) +
+  scale_color_divergent(name = "Anomalia") +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA) +
+  coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
+  facet_wrap(~ens, ncol = 5) +
+  theme(legend.position = "bottom")
+```
 
