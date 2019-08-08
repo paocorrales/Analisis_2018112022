@@ -47,33 +47,49 @@ Si analizamos la cantidad de observaciones para cada tiempo, no se ve mucha dife
 Pero en realidad acá tenemos los 10 miembros del emsable juntos, si contamos la cantidad de observaciones en el diag de cada miembro nos da lo mismo. Suena raro pero revisé los diag y si bien tienen la misma cantidad de observaciones, la diferencia entre la observación y el guess cambia. Es posible que haya algo en el código que primero seleccione las observaciones a comparar con el guess? Tal vez ese trabajo lo hace cuando calcula el diag para la media. 
 
 ```{r}
-obs[, .N, by = .(var, type)] %>% 
+obs[ens == "001" & date.time == date.time[1], .N, by = .(var, type)] %>% 
   ggplot(aes(factor(type), N)) +
   geom_col(position = "dodge") +
   # scale_fill_viridis_d() +
   scale_y_log10() +
-  facet_wrap(~var, scales = "free") +
+  facet_wrap(~var, scales = "free") 
+```
 
-obs[var == "t" & type == 181 & ens == "001", .N, by = .(stationID, lon, lat)] %>% 
+```{r}
+obs[usage.flag == 1 & var == "t" & ens == "001" & date.time == date.time[1], .N, by = .(stationID, lon, lat)] %>% 
   ggplot(aes(ConvertLongitude(lon), lat)) +
   geom_sf(data = map, inherit.aes = FALSE) +
   geom_point(aes(fill = N, size = N), shape = 21) +
   scale_size_area(max_size = 3, guide = "none") +
   coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
-  labs(title = "Distribución de estaciones y \ncantididad de observaciones en cada una", x = "lon") +
+  labs(title = "Observaciones en prepbufr nivel 2", x = "lon") +
+  theme(legend.position = "bottom") +
+
+
+
+fread("E1/automaticas/2018112018.csv") %>% 
+  # .[duplicated(aut[, c("V1", "V2")])] %>% 
+  .[, .N, by = .(V1, V2)] %>% 
+  ggplot(aes(V2, V1)) +
+  geom_sf(data = map, inherit.aes = FALSE) +
+  geom_point(aes(fill = N, size = N), shape = 21) +
+  scale_size_area(max_size = 3, guide = "none") +
+  coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
+  labs(title = "Observaciones de estaciones automáticas", x = "lon") +
   theme(legend.position = "bottom")
 ```
+
 
 En los diag se guarda la diferencia entre la observación y el guess. Si todo anda más o menos bien sería deseable que los valores de esta diferencia esten centrados alrededor de 0 con una distribucón más o menos gausiana.
 
 ```{r}
-obs[usage.flag == 1] %>% 
+obs[usage.flag == 1 & ens == "001" & rerr < 5e9] %>% 
   ggplot(aes(obs.guess)) +
   geom_density(aes(color = var)) +
   geom_rug() +
   facet_wrap(~factor(var), scales = "free") +
   theme(legend.position = "none") +
-obs[usage.flag == 1] %>% 
+obs[usage.flag == 1 & rerr < 5e9] %>% 
   ggplot(aes(obs.guess, rerr)) +
   geom_point(alpha = 0.05, size = 0.5) +
   facet_wrap(~var, scales = "free")
@@ -117,7 +133,8 @@ obs[usage.flag == 1 & var == "t" & type == 181 & obs.guess > 10 & abs(dhr) <= 0.
 
 ```{r}
 
-obs[usage.flag == 1, .(rmsi = sqrt(sum(obs.guess)^2/.N)), by = .(lon, lat, date.time)] %>% 
+obs[usage.flag == 1, .(rmsi = sqrt(sum(obs.guess)^2/.N)), by = .(lon, lat, date.time, var)] %>% 
+  .[var == "t"] %>% 
   copy() %>% 
   .[, date.time := factor(date.time)] %>% 
   ggplot(aes(ConvertLongitude(lon), lat)) +
