@@ -1,0 +1,91 @@
+---
+title: "100_Observaciones"
+author: "Pao"
+date: "8/13/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## El camino de las observaciones (convencionales)
+
+### En GSI como operador de las observaciones
+
+GSI lee las observaciones convecionales solo de archivo tipo [*prepBUFR*](https://dtcenter.org/com-GSI/BUFR/docs/users_guide/BUFR_PrepBUFR_User_Guide_v1.pdf) (BUFR con características específicas de NCEP). Cada observación en el prepBUFR está asociada a su localización, error y un marcador de control de calidad. 
+
+Cuando el análisis es **global**, GSI lee los errores del prepBUFR o utiliza una tabla de errores predefinida (`oberrflg = .true.` en el namelist). Pero para un análisis **regional** siempre utiliza una tabla de errores *errtable* que se incluye en el directorio *./fix* (usamos prepobs_errtable.global modificado para poder asimilar observaciones tipo 181 y 281). La tabla tiene la sigueinte pinta:
+
+![](fig/errtable.png)
+
+El `NA` correspondiente es 0.10000E+10 y en ese caso la observación no se asimila. 
+
+> Sobre cada tipo de observación --> [Table 2](https://www.emc.ncep.noaa.gov/mmb/data_processing/prepbufr.doc/table_2.htm)
+
+GSI tiene la capacidad de hacer un *thinning* de las observaciones, según su tipo. Esto se activa modificando el algumento `ithin = 1` en el archivo *convinfo*.
+
+A continuación hace un *gross check* que también se controla desde el archivo *convinfo* para cada tipo de observación cambiando el valor del umbral (`gross`), el error mínimo (`ermin`) y el error máximo (`ermax`). Se calcula un ratio como:
+
+$$ ratio = (obs - bk)/max(ermin, min(ermax, obserror)) $$
+
+Si $ration > gross$ la observación es rechazada. 
+
+Internamente (en las rutinas `setup-var-.f90`) GSI puede modificar el valor que toma `gross` para penalizar observaciones con marcadores de control de calidad igual a 3 (entonces `gross = 0.7*gross`). 
+
+Los marcadores de control de calidad se definen al crear el archivo prepBUFR pero además se modifican cuando las observaciones pasan por los controles de calidad previos a cualquier uso. Por defecto a las observaciones de estaciones meteorológicas de la región agregadas manualmente se les asignó un `qc = 2`. Puede tomar los sigueintes valores:
+
+| qc | uso |
+|:--:|:----|
+| 0-2| --> Se asimila|
+|3|Obs sospechosa --> se penaliza el gross check|
+|4-15| --> Se rechaza (en algunos casos con qc 9 o 15 la observación se usa para monitoreo|
+
+[Al menos para la temperatura] existe un *boddycheck* que revisa la consistencia especial entre las observaciones. Si pasa el chequeo entonces se relaja el gross check (`gross = 3.5*gross`) y en teoría eso debería quedar asentado en los diag como un `0.50` entra en la `usage flag`. 
+
+### Manejo del error dentro de GSI
+
+Si la asimilación es GLOBAL puede tomar el error del prepBUFR pero en el caso REGIONAL, usa la información de la tabla *errtable*. Sin embargo al leer los diag files finales es fácil ver que el error asociado a cada observación es distinto y eso me hace pensar que se hace un tratamiento sobre los errores que depende de cada observación. 
+
+La rutina `setupt` (hay una para cada timpo de observación) se encarga de lo siguiente:
+
+* reads obs assigned to given mpi task (geographic region),
+* simulates obs from guess,
+* apply some quality control to obs,
+* load weight and innovation arrays used in minimization
+* collects statistics for runtime diagnostic output
+* writes additional diagnostic information to output file
+
+Lo que me interesa acá es que escribe los diag files que contiene la información sobre las observaciones, usage flags, errores y la innovación que va a ser usado luego por el LETKF. Y en lineas generales lo que entiendo que hace es sacar el error de algún lado y luego calcular un `ratio_errors` que parece incorporar información sobre si la observación está muy por fuera de la retícula vertical o si por ejemplo está por debajo de superficie.
+
+Con eso genera el error final como:
+
+$$err\_final = 1/(ratio\_errors*error)$$
+
+Lo interesante es que un poco antes en el código invierte $error = 1/error$ y encima luego lo que escribe en el diag file es:
+
+$$ errinv\_final = 1/err\_final$$
+
+Asíque IMPORTANTE: en el diag se guarda la inversa del error `r emo::ji("doubt")`
+
+### Durante la asimilación con LETKF
+
+En primer lugar se leen los diag files (para convencionales: `readconvobs.f90`). Revisa la usage flag y los que tienen `-1` pasan de largo y ni las mira (aunque son contadas en el total de observaciones leidas).
+
+Luego hace una especie de gross check y revisa que se cumpla:
+
+* `error > errorlimit & error < errorlimit2 & abs(obsmax) <= 1e9 & pres > 0.001 & pres <= 1200`
+
+Y `errorlimit ~ 0.00031623`, `errorlimit2 = 1000`, `obmax = abs(rdiagbuf(17,n)/rdiagbuf(20,n))`
+
+$$errororig = rdiagbuf(14,n)$$
+
+Con $rdiagbuf(14,n)$ el inverse observation error.  **[[Del prepBUFR???!!!!]]**
+
+$$error     = rdiagbuf(16,n)$$
+
+Con $rdiagbuf(16,n)$ el final inverse observation error.
+
+Y si no hay un valor para el error o es MUY chico, entonces se asigna un valor enorme.
+
+**¿¿¿Y después???**
