@@ -41,6 +41,8 @@ Los marcadores de control de calidad se definen al crear el archivo prepBUFR per
 |3|Obs sospechosa --> se penaliza el gross check|
 |4-15| --> Se rechaza (en algunos casos con qc 9 o 15 la observación se usa para monitoreo|
 
+> Por detalles sobre los marcadores de controles de calidad [Table 7](https://www.emc.ncep.noaa.gov/mmb/data_processing/prepbufr.doc/table_7.htm)
+
 [Al menos para la temperatura] existe un *boddycheck* que revisa la consistencia especial entre las observaciones. Si pasa el chequeo entonces se relaja el gross check (`gross = 3.5*gross`) y en teoría eso debería quedar asentado en los diag como un `0.50` entra en la `usage flag`. 
 
 ### Manejo del error dentro de GSI
