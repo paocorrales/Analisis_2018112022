@@ -34,7 +34,7 @@ Se cambió la configuracón de GSI para que permita la asimilación de observaci
 En el archivo diag generado se ve lo siguiente:
 
 ```{r echo=FALSE}
-diag <- fread("E1/test/test.csv", na.strings = c("0.100E+11", "-0.100E+06", "-99999.90", "-100000.00")) %>% 
+diag <- fread("E1/test/test.csv") %>% 
   .[, c("V2", "V4") := NULL]
 
 colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr")
@@ -48,7 +48,6 @@ El resto, corresponde al registro sin presión. Se ve que en la columna correspo
 Me surgen las siguientes dudas:
 
 - Los valores de los errores para t, q y uv son muy grandes y no tienen sentido, ¿que está haciendo GSI?
-- La observaciones de humedad no son asimiladas, ¿porque las rechaza?
 - En ambas observaciones de uv, el valor de la presión es distinto al del restro del registro. En el primer registro devería ser 1000 hPa pero aparece como 957 hPa, en el segundo registro debería ser 1.00e+11 pero es 970 hPa. Algo raro hace GSI.
 - Porque no asimila la obs de uv del segundo registro? Sobre todo porque está inventando un valor para la presión, qué le falta?
 
