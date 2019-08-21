@@ -503,9 +503,11 @@ $(document).ready(function () {
         if(abs(dpres)&gt;four) 
           drpx=1.0e10_r_kind
           pres_diff=prest-r10*psges
-        if (twodvar_regional .and. abs(pres_diff)&gt;=r1000) drpx=1.0e10_r_kind
+        if (twodvar_regional .and. abs(pres_diff)&gt;=r1000) 
+          drpx=1.0e10_r_kind
      end if</code></pre>
 <p>Y acá entra al if porque <code>abs(dpres)&gt;four</code> y entonces <code>drpx</code> pasa a tener ese valor enorme. Entiendo que en esta parte revisa que la observación esté dentro de la retícula vertical y en caso de que no, cambia ese valor para que luego no se asimile por el valor del error. Pero para la observación que estamos analizando no debería haber problemas! Veamos de donde sale exactamente <code>dpres</code>.</p>
+<p>Parece que el valor de <code>dpres</code> cambia cuando corre una rutina que ¿traduce? a puntos de retícula: <code>grdcrd1()</code> (según la rutina: get grid coordinates from monotonically increasing or decreasing points). Al salir de esta rutina <code>dpres=-8.5960447079269979</code>.</p>
 <ul>
 <li><em>Cuarto</em>: Al pasar por el <em>gross check</em> se definen las siguientes variables:</li>
 </ul>

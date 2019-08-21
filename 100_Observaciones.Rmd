@@ -137,14 +137,14 @@ Estamos dividiendo por un valor enorme de `drpx`. Si volvemos atrás en el cádi
 Como estamos trabajando con observaciones de superficie y no usamos 2Dvar, entonces `drpx` va a tomar un valor distinto de cero. Revisemos que son cada una de las variables que se usan para calcular  `drpx`.
 
 ```{bash, eval=FALSE, echo=TRUE}
-    - dpres      = 4.6051701859880918 --> data(ipres,i)=pressure
+    - dpres      = 4.5432947822700038 --> data(ipres,i)=pressure
     - psges      = 95.804888588326051 --> presión en el guess?
     - rd_over_cp = 0.28572566195500698 --> constante Rd/Cp
     - t0c        = 273.14999999999998
 ```
 El valor de `dpres` debería ser el dato de la presión en la estación, sin embargo 4.60 es un valor que no tiene sentido, al menos que en la lectura se guarde el logarítmo de la presión y que todo esté en centibares. Si es así, tiene más sentido. 
 
-Si bien `drpx=3.3243794141870162` luego del if de más arriba, luego en el código y antes de calcular el `rario_errors` chequea lo siguiente:
+Si bien `drpx=1.4883912190964803` al salir del if de más arriba, luego en el código y antes de calcular el `rario_errors` chequea lo siguiente:
 
 ```{bash, eval=FALSE, echo=TRUE}
 ! Check to see if observations is above the top of the model (regional mode)
@@ -159,7 +159,9 @@ Si bien `drpx=3.3243794141870162` luego del if de más arriba, luego en el códi
 
 Y acá entra al if porque `abs(dpres)>four` y entonces `drpx` pasa a tener ese valor enorme. Entiendo que en esta parte revisa que la observación esté dentro de la retícula vertical y en caso de que no, cambia ese valor para que luego no se asimile por el valor del error. Pero para la observación que estamos analizando no debería haber problemas! Veamos de donde sale exactamente `dpres`.
 
-Parece que el valor de `dpres` cambia cuando corre una rutina que ¿traduce? a puntos de retícula: `grdcrd1()` (según la rutina: get grid coordinates from monotonically increasing or decreasing points). Al salir de esta rutina `dpres=-8.5960447079269979`. 
+Parece que el valor de `dpres` cambia cuando corre una rutina que ¿traduce? a puntos de retícula: `grdcrd1()` (según la rutina: get grid coordinates from monotonically increasing or decreasing points). Al salir de esta rutina `dpres=4.5138028388433380`. 
+
+[[O sea que acá está el problema. Hay que entender que hace esa rutina.]]
 
 * _Cuarto_: Al pasar por el *gross check* se definen las siguientes variables:
 
