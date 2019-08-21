@@ -492,12 +492,12 @@ $(document).ready(function () {
         drpx = abs(one - (one/exp(dpres - log(psges)))**rd_over_cp)*t0c
      end if</code></pre>
 <p>Como estamos trabajando con observaciones de superficie y no usamos 2Dvar, entonces <code>drpx</code> va a tomar un valor distinto de cero. Revisemos que son cada una de las variables que se usan para calcular <code>drpx</code>.</p>
-<pre class="bash"><code>    - dpres      = 4.6051701859880918 --&gt; data(ipres,i)=pressure
+<pre class="bash"><code>    - dpres      = 4.5432947822700038 --&gt; data(ipres,i)=pressure
     - psges      = 95.804888588326051 --&gt; presión en el guess?
     - rd_over_cp = 0.28572566195500698 --&gt; constante Rd/Cp
     - t0c        = 273.14999999999998</code></pre>
 <p>El valor de <code>dpres</code> debería ser el dato de la presión en la estación, sin embargo 4.60 es un valor que no tiene sentido, al menos que en la lectura se guarde el logarítmo de la presión y que todo esté en centibares. Si es así, tiene más sentido.</p>
-<p>Si bien <code>drpx=3.3243794141870162</code> luego del if de más arriba, luego en el código y antes de calcular el <code>rario_errors</code> chequea lo siguiente:</p>
+<p>Si bien <code>drpx=1.4883912190964803</code> al salir del if de más arriba, luego en el código y antes de calcular el <code>rario_errors</code> chequea lo siguiente:</p>
 <pre class="bash"><code>! Check to see if observations is above the top of the model (regional mode)
      if(sfctype)then
         if(abs(dpres)&gt;four) 
@@ -507,7 +507,8 @@ $(document).ready(function () {
           drpx=1.0e10_r_kind
      end if</code></pre>
 <p>Y acá entra al if porque <code>abs(dpres)&gt;four</code> y entonces <code>drpx</code> pasa a tener ese valor enorme. Entiendo que en esta parte revisa que la observación esté dentro de la retícula vertical y en caso de que no, cambia ese valor para que luego no se asimile por el valor del error. Pero para la observación que estamos analizando no debería haber problemas! Veamos de donde sale exactamente <code>dpres</code>.</p>
-<p>Parece que el valor de <code>dpres</code> cambia cuando corre una rutina que ¿traduce? a puntos de retícula: <code>grdcrd1()</code> (según la rutina: get grid coordinates from monotonically increasing or decreasing points). Al salir de esta rutina <code>dpres=-8.5960447079269979</code>.</p>
+<p>Parece que el valor de <code>dpres</code> cambia cuando corre una rutina que ¿traduce? a puntos de retícula: <code>grdcrd1()</code> (según la rutina: get grid coordinates from monotonically increasing or decreasing points). Al salir de esta rutina <code>dpres=4.5138028388433380</code>.</p>
+<p>[[O sea que acá está el problema. Hay que entender que hace esa rutina.]]</p>
 <ul>
 <li><em>Cuarto</em>: Al pasar por el <em>gross check</em> se definen las siguientes variables:</li>
 </ul>
