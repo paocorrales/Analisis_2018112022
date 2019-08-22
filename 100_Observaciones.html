@@ -424,6 +424,9 @@ $(document).ready(function () {
 </tr>
 </tbody>
 </table>
+<blockquote>
+<p>Por detalles sobre los marcadores de controles de calidad <a href="https://www.emc.ncep.noaa.gov/mmb/data_processing/prepbufr.doc/table_7.htm">Table 7</a></p>
+</blockquote>
 <p>[Al menos para la temperatura] existe un <em>boddycheck</em> que revisa la consistencia especial entre las observaciones. Si pasa el chequeo entonces se relaja el gross check (<code>gross = 3.5*gross</code>) y en teoría eso debería quedar asentado en los diag como un <code>0.50</code> entra en la <code>usage flag</code>.</p>
 </div>
 <div id="manejo-del-error-dentro-de-gsi" class="section level3">
@@ -459,6 +462,102 @@ $(document).ready(function () {
 <p>Con <span class="math inline">\(rdiagbuf(16,n)\)</span> el final inverse observation error.</p>
 <p>Y si no hay un valor para el error o es MUY chico, entonces se asigna un valor enorme.</p>
 <p><strong>¿¿¿Y después???</strong></p>
+</div>
+<div id="paso-a-paso-setupt.f90" class="section level3">
+<h3>“Paso a paso:” setupt.f90</h3>
+<p>La idea es entender como esta rutina (y tal vez generalizando, el resto de las rutinas setup) manejan el error de la observación. Revisamos la rutina primero con una observación <code>type=181</code></p>
+<ul>
+<li><em>Primero</em>: toma de la rutina de lectura de prepbufrs (creo, es lo natural pero el código no es muy claro) toda la informción de la observación. Ahora nos interesa:</li>
+</ul>
+<p><code>ier=1       ! index of obs error</code></p>
+<p><code>ier2=11     ! index of original-original obs error ratio</code></p>
+<ul>
+<li><em>Segundo</em>: carga el valor de la observación y el error en variables locales:</li>
+</ul>
+<p><code>obserror=1.5</code> –&gt; Este es el valor que se le asigna al error según la <em>errtable</em></p>
+<p><code>error=data(ier2,i)=1.5</code> –&gt; Parece que también toma la información de la tabla.</p>
+<ul>
+<li><em>Tercero</em>: calcula un <code>ratio_errros</code> y la inversa del error que llama <code>error</code>:</li>
+</ul>
+<p><code>ratio_errors=error/(data(ier,i)+drpx+1.0e6_r_kind*rhgh+r8*ramp)=1.4999999888651486E-010</code></p>
+<p><code>error=one/error=0.6666</code></p>
+<p>Y creo que acá está el problema. El ratio_errors parece muy chiquito, así que vamos a mirar que valores tomá cada elemento:</p>
+<pre class="bash"><code>    - drpx  = 10000000000.000000
+    - rhgh  = 0.0000000000000000
+    - r8    = 8.0000000000000000 --&gt; constante
+    - ramp  = 9.0915430444723437 </code></pre>
+<p>Estamos dividiendo por un valor enorme de <code>drpx</code>. Si volvemos atrás en el cádigo encontramos lo siguiente:</p>
+<pre class="bash"><code>     drpx = zero
+     if(sfctype .and. .not.twodvar_regional) then
+        drpx = abs(one - (one/exp(dpres - log(psges)))**rd_over_cp)*t0c
+     end if</code></pre>
+<p>Como estamos trabajando con observaciones de superficie y no usamos 2Dvar, entonces <code>drpx</code> va a tomar un valor distinto de cero. Revisemos que son cada una de las variables que se usan para calcular <code>drpx</code>.</p>
+<pre class="bash"><code>    - dpres      = 4.5432947822700038 --&gt; data(ipres,i)=pressure
+    - psges      = 95.804888588326051 --&gt; presión en el guess?
+    - rd_over_cp = 0.28572566195500698 --&gt; constante Rd/Cp
+    - t0c        = 273.14999999999998</code></pre>
+<p>El valor de <code>dpres</code> debería ser el dato de la presión en la estación, sin embargo 4.60 es un valor que no tiene sentido, al menos que en la lectura se guarde el logarítmo de la presión y que todo esté en centibares. Si es así, tiene más sentido.</p>
+<p>Si bien <code>drpx=1.4883912190964803</code> al salir del if de más arriba, luego en el código y antes de calcular el <code>rario_errors</code> chequea lo siguiente:</p>
+<pre class="bash"><code>! Check to see if observations is above the top of the model (regional mode)
+     if(sfctype)then
+        if(abs(dpres)&gt;four) 
+          drpx=1.0e10_r_kind
+          pres_diff=prest-r10*psges
+        if (twodvar_regional .and. abs(pres_diff)&gt;=r1000) 
+          drpx=1.0e10_r_kind
+     end if</code></pre>
+<p>Y acá entra al if porque <code>abs(dpres)&gt;four</code> y entonces <code>drpx</code> pasa a tener ese valor enorme. Entiendo que en esta parte revisa que la observación esté dentro de la retícula vertical y en caso de que no, cambia ese valor para que luego no se asimile por el valor del error. Pero para la observación que estamos analizando no debería haber problemas! Veamos de donde sale exactamente <code>dpres</code>.</p>
+<p>Parece que el valor de <code>dpres</code> cambia cuando corre una rutina que ¿traduce? a puntos de retícula: <code>grdcrd1()</code> (según la rutina: get grid coordinates from monotonically increasing or decreasing points). Al salir de esta rutina <code>dpres=4.5138028388433380</code>.</p>
+<p>[[O sea que acá está el problema. Hay que entender que hace esa rutina.]]</p>
+<ul>
+<li><em>Cuarto</em>: Al pasar por el <em>gross check</em> se definen las siguientes variables:</li>
+</ul>
+<pre class="bash"><code>    - obserror = 10000000074.232344
+    - obserrlm = 5.5999999999999996
+    - residual = 2.1893957502929879
+    - ratio    = 0.39096352683803359
+    - ratiosfc = 0.39096352683803359</code></pre>
+<p>Lo que nos interesa acá es ver que <code>obserror</code> se redefine y se calcula como:</p>
+<p><code>obserror = one/max(ratio_errors*error,tiny_r_kind)</code></p>
+<p>Y como <code>tiny_r_kind= 2.2250738585072014E-308</code>, sale de la cuenta <code>1/ratio_errors</code>. De todos modos esta variable no llega a los diags.</p>
+<ul>
+<li><p>En el medio hay varios controles, pero que en principio no afectan porque o las opciones están apagadas o no corresponde al tipo de observación.</p></li>
+<li><p><em>Finalmente</em>: Selecciona la información para el archivo diag que va a escribir:</p></li>
+</ul>
+<pre class="bash"><code>if (conv_diagsave .and. luse(i)) then
+        ii=ii+1
+        rstation_id = data(id,i)
+        err_input = data(ier2,i)
+        err_adjst = data(ier,i)
+        if (ratio_errors*error&gt;tiny_r_kind) then
+           err_final = one/(ratio_errors*error)
+        else
+           err_final = huge_single
+        endif
+
+        errinv_input = huge_single
+        errinv_adjst = huge_single
+        errinv_final = huge_single
+        if (err_input&gt;tiny_r_kind) errinv_input=one/err_input
+        if (err_adjst&gt;tiny_r_kind) errinv_adjst=one/err_adjst
+        if (err_final&gt;tiny_r_kind) errinv_final=one/err_final
+
+        if(binary_diag) call contents_binary_diag_
+        if(netcdf_diag) call contents_netcdf_diag_
+     end if</code></pre>
+<p>Y según el log, estas variables toman los siguientes valores:</p>
+<pre class="bash"><code>luse         = T
+err_input    = 1.5000000000000000 --&gt; original-original obs error ratio
+err_adjst    = 1.5000000000000000 --&gt; obs error
+err_final    = 10000000074.232344 --&gt; 1/(ratio_errors*errors)
+errinv_input = 0.66666666666666663 --&gt; inversa de err_input
+errinv_adjst = 0.66666666666666663 --&gt; inversa de err_adjst
+errinv_final = 9.9999999257676567E-011 --&gt; inversa de err_final</code></pre>
+<p>Los errores que se guardan en el diag final entonces son:</p>
+<pre class="bash"><code> rdiagbuf(14,ii) - input  = 0.666666687
+ rdiagbuf(15,ii) - adjst  = 0.666666687
+ rdiagbuf(16,ii) - final  = 1.00000001E-10</code></pre>
+<p>El error final es el que luego se decodifica de los diags como <code>1/errinv_final</code> para mantener las unidades y que tiene un valor enorme (1.00e+10) porque se guarda como 1.00e-10.</p>
 </div>
 </div>
 
