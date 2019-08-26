@@ -161,7 +161,7 @@ Y acá entra al if porque `abs(dpres)>four` y entonces `drpx` pasa a tener ese v
 
 Parece que el valor de `dpres` cambia cuando corre una rutina que ¿traduce? a puntos de retícula: `grdcrd1()` (según la rutina: get grid coordinates from monotonically increasing or decreasing points). Al salir de esta rutina `dpres=4.5138028388433380`. 
 
-[[O sea que acá está el problema. Hay que entender que hace esa rutina.]]
+Exactamente, la rutina convierte el valor de `dpres` al indice del nivel más cercano a la observación. Imagino que GSI cuenta los niveles de abajo para arriba y entonces si el indice es mayor a 4, está muy lejos de la superficie y asume que la observación no es buena. Esto es una mala noticia para nuestras observaciones sin presión porque al pasar por esta rutina el valor de la presión tiene que ser razonable o la observación es descartada (al menos indirectamente asignando un valor de error enorme).
 
 * _Cuarto_: Al pasar por el *gross check* se definen las siguientes variables:
 
@@ -225,6 +225,7 @@ Los errores que se guardan en el diag final entonces son:
  rdiagbuf(15,ii) - adjst  = 0.666666687
  rdiagbuf(16,ii) - final  = 1.00000001E-10
  ```
+
 
 El error final es el que luego se decodifica de los diags como `1/errinv_final` para mantener las unidades y que tiene un valor enorme (1.00e+10) porque se guarda como 1.00e-10. 
 

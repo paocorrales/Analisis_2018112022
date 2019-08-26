@@ -508,7 +508,7 @@ $(document).ready(function () {
      end if</code></pre>
 <p>Y acá entra al if porque <code>abs(dpres)&gt;four</code> y entonces <code>drpx</code> pasa a tener ese valor enorme. Entiendo que en esta parte revisa que la observación esté dentro de la retícula vertical y en caso de que no, cambia ese valor para que luego no se asimile por el valor del error. Pero para la observación que estamos analizando no debería haber problemas! Veamos de donde sale exactamente <code>dpres</code>.</p>
 <p>Parece que el valor de <code>dpres</code> cambia cuando corre una rutina que ¿traduce? a puntos de retícula: <code>grdcrd1()</code> (según la rutina: get grid coordinates from monotonically increasing or decreasing points). Al salir de esta rutina <code>dpres=4.5138028388433380</code>.</p>
-<p>[[O sea que acá está el problema. Hay que entender que hace esa rutina.]]</p>
+<p>Exactamente, la rutina convierte el valor de <code>dpres</code> al indice del nivel más cercano a la observación. Imagino que GSI cuenta los niveles de abajo para arriba y entonces si el indice es mayor a 4, está muy lejos de la superficie y asume que la observación no es buena. Esto es una mala noticia para nuestras observaciones sin presión porque al pasar por esta rutina el valor de la presión tiene que ser razonable o la observación es descartada (al menos indirectamente asignando un valor de error enorme).</p>
 <ul>
 <li><em>Cuarto</em>: Al pasar por el <em>gross check</em> se definen las siguientes variables:</li>
 </ul>
