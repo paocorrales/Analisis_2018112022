@@ -224,12 +224,17 @@ Los errores que se guardan en el diag final entonces son:
  rdiagbuf(14,ii) - input  = 0.666666687
  rdiagbuf(15,ii) - adjst  = 0.666666687
  rdiagbuf(16,ii) - final  = 1.00000001E-10
- ```
-
+```
 
 El error final es el que luego se decodifica de los diags como `1/errinv_final` para mantener las unidades y que tiene un valor enorme (1.00e+10) porque se guarda como 1.00e-10. 
 
+### Notas sobre asimilación de humedad
 
+A simple vista GSI parece tratar de manera análoga a la humedad. Eso significa que también chequea si la observación se encuentra en el nivel de modelo correcto usando el dato de la presión. Mala para las observaciones sin presión.
+
+### Notas sobre asimilación de viento
+
+La rutina setupw.f90 es un poco más compleja que las anteriores. Pero, parece que puede manejar observaciones que no tienen una presión asociada pero si la altura. De hecho parece que si la observación es de superficie o sea `280 <= itype < 300` directamente trabaja con la altura y no con la presión. 
 
 
 
