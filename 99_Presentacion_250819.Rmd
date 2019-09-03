@@ -1,0 +1,70 @@
+---
+title: "99_Presentacion_250819"
+author: "Pao"
+date: "8/26/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(metR)
+library(data.table)
+library(dplyr)
+library(lubridate)
+library(patchwork)
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+proj <- paste0("+proj=lcc +lat_1=-30.966 +lat_2=-30.966 +lat_0=-30.966 +lon_0=-63.567",
+                    " +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
+```
+
+## Dominio
+
+```{r}
+ReadNetCDF("E1/wrfinput_d01", vars = c("HGT", "XLAT", "XLONG")) %>% 
+  setnames(c("HGT", "XLAT", "XLONG"), c("hgt", "lat", "lon")) %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = hgt)) +
+  scale_color_distiller(name = "Topography", type = "seq", palette = "RdYlGn", direction = -1) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA) +
+  coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
+  labs(x = "Longitude", y = "Latitude") +
+  theme_minimal() 
+```
+
+```{r}
+files <- Sys.glob("E1/diagfiles/asim*")
+
+obs <- lapply(files, function(f) {
+  date_time <- ymd_hms(substr(basename(f), 11, 24))
+  ens <- substr(basename(f), 29, 31)
+  fread(f, na.strings = c("0.100E+11", "-0.100E+06", "-99999.90", "-100000.00")) %>% 
+    .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  .[, c("V2", "V4") := NULL]
+
+colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "date.time", "ens")
+
+unique(obs, by = c("stationID")) %>% 
+  .[!str_detect(stationID, "SMN")] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_sf(data = map, inherit.aes = FALSE) +
+  geom_point(alpha = 0.8, aes(color = is.na(as.numeric(stationID)))) +
+  scale_color_manual(name =  NULL, values = c("TRUE" = "#FD8002", "FALSE" = "#367DB7"),
+                     breaks = c("FALSE", "TRUE"),
+                     labels = c("Official (N = 116)", "Non-official (N = 409)"))+
+  coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
+  labs(x = "Longitud", y = "Latitud") +
+  theme_minimal(base_size = 18) + 
+  theme(legend.position = "bottom")
+
+obs[ens == "001" & date.time == unique(date.time)[1]] %>%
+  # unique(by = c("stationID")) %>% 
+  .[, station := ifelse(is.na(as.numeric(stationID)), "non-official", "offitial")] %>% 
+  .[, .N, by = .(station)]
+
+```
