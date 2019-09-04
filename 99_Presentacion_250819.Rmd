@@ -54,7 +54,7 @@ unique(obs, by = c("stationID")) %>%
   ggplot(aes(ConvertLongitude(lon), lat)) +
   geom_sf(data = map, inherit.aes = FALSE) +
   geom_point(alpha = 0.8, aes(color = is.na(as.numeric(stationID)))) +
-  scale_color_manual(name =  NULL, values = c("TRUE" = "#FD8002", "FALSE" = "#367DB7"),
+    scale_color_manual(name =  NULL, values = c("TRUE" = "#FD8002", "FALSE" = "#367DB7"),
                      breaks = c("FALSE", "TRUE"),
                      labels = c("Official (N = 116)", "Non-official (N = 409)"))+
   coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
