@@ -124,7 +124,7 @@ dcast(model, bottom_top + south_north + west_east_stag ~ model, value.var = "U")
 
 No hay diferencia en el analisis porque pareciera que no asimila nada. Lo fit muestran que lee observaciones y "se las queda" pero no hay estadística. En el caso del diag las marca para usar pero parece que luego cambia de idea. 
 
-```{r eval=FALSE, include=FALSE}
+```{r include=FALSE}
 # Recorto el dominio y las variables para trabajar mejor
 
 files <- Sys.glob("E1/test/*.nc")
