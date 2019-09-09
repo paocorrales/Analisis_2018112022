@@ -8,5 +8,5 @@ Análisis preliminar de mi primer experimento de asimilación de datos para un c
 - Ensemble: 60 mimebros con multifísica y perturbaciones aleatorias.
 - Condiciones iniciales y de contorno: GFS (determinístico 0.5º)
 
--Experimento 1: Observaciones convencionales del prepBUFR y estaciones automáticas de la región
+- Experimento 1: Observaciones convencionales del prepBUFR y estaciones automáticas de la región
 
