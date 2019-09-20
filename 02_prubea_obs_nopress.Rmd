@@ -124,40 +124,71 @@ dcast(model, bottom_top + south_north + west_east_stag ~ model, value.var = "U")
 
 No hay diferencia en el analisis porque pareciera que no asimila nada. Lo fit muestran que lee observaciones y "se las queda" pero no hay estadística. En el caso del diag las marca para usar pero parece que luego cambia de idea. 
 
-```{r eval=FALSE, include=FALSE}
+```{r include=FALSE}
 # Recorto el dominio y las variables para trabajar mejor
 
 files <- Sys.glob("E1/test/*.nc")
 
 model <- lapply(files, function(f) { 
-  ReadNetCDF(f, vars = c("T", "MU"),
+  ReadNetCDF(f, vars = c("T", "QVAPOR"),
                   subset = list(bottom_top = 1:5)) %>% 
     .[, model := gsub(".nc", "", basename(f))]
   }) %>% 
   rbindlist()
 
 model[bottom_top == 1] %>% 
-  dcast(bottom_top + south_north + west_east ~ model, value.var = "MU") %>% 
+  dcast(bottom_top + south_north + west_east ~ model, value.var = "T") %>% 
   ggplot(aes(west_east, south_north)) + 
   geom_contour(aes(z = (ana187 - guess))) +
   scale_fill_viridis_c() +
   coord_fixed() +
   labs(title = "ana-guess en la perturbación de \nla temperatura potencial \n(theta-t0 en K)") 
 
-model <- lapply(files, function(f) { 
-  ReadNetCDF(f, vars = c("U"),
-                  subset = list(bottom_top = 1:5)) %>% 
-    .[, model := gsub(".nc", "", basename(f))]
-  }) %>% 
-  rbindlist()
-
-dcast(model, bottom_top + south_north + west_east_stag ~ model, value.var = "U") %>% 
-  .[bottom_top == 1] %>% 
-  ggplot(aes(west_east_stag, south_north)) + 
-  geom_contour(aes(z = (ana187 - guess))) +
-  scale_fill_viridis_c() +
-  coord_fixed() +
-  labs(title = "ana-guess en el viento zonal") 
+# model <- lapply(files, function(f) { 
+#   ReadNetCDF(f, vars = c("U"),
+#                   subset = list(bottom_top = 1:5)) %>% 
+#     .[, model := gsub(".nc", "", basename(f))]
+#   }) %>% 
+#   rbindlist()
+# 
+# dcast(model, bottom_top + south_north + west_east_stag ~ model, value.var = "U") %>% 
+#   .[bottom_top == 1] %>% 
+#   ggplot(aes(west_east_stag, south_north)) + 
+#   geom_contour(aes(z = (ana187 - guess))) +
+#   scale_fill_viridis_c() +
+#   coord_fixed() +
+#   labs(title = "ana-guess en el viento zonal") 
 ```
 
 Por la asimetría que se ve en la diferencia entre el analisis y el guess en la perturbación de la temperatura, me animo a decir que se asimilaron las observaciones 187 y 287 pero es raro que al asimilar solo esas, no da nada. 
+
+### Comparación Ana-Guess incorporando observaciones sin presión.
+
+#### Temperatura (type = 187)
+
+Observación:
+
+- Ubicación: -34.82 ; 301.47
+- Valor: 0.302E+03  
+- Diff: -0.121E+00
+- Error: 0.150E+01
+
+```{r}
+model[bottom_top == 1] %>% 
+  dcast(bottom_top + south_north + west_east ~ model, value.var = "T") %>% 
+  ggplot(aes(west_east, south_north)) + 
+  geom_contour_fill(aes(z = (ana187_t - guess))) +
+  scale_fill_viridis_c() +
+  coord_fixed() +
+  labs(title = "ana-guess en la perturbación de \nla temperatura potencial \n(theta-t0 en K)") 
+
+model[bottom_top == 1] %>% 
+  dcast(bottom_top + south_north + west_east ~ model, value.var = "QVAPOR") %>% 
+  ggplot(aes(west_east, south_north)) + 
+  geom_contour_fill(aes(z = (ana187_q - guess))) +
+  scale_fill_viridis_c() +
+  coord_fixed() +
+  labs(title = "ana-guess en la humedad kg/kg") 
+```
+
+

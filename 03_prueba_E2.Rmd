@@ -1,0 +1,233 @@
+---
+title: "03_prueba_E2"
+author: "Pao"
+date: "9/11/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = TRUE)
+
+library(ggplot2)
+library(metR)
+library(data.table)
+library(dplyr)
+library(lubridate)
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+```
+
+## Prueba E2
+
+10 miembros, 6 horas de spin up, 6 ciclos de asimilación.
+
+```{r message=FALSE}
+# sshfs jruiz@cheyenne.ucar.edu:/glade/scratch/jruiz/EXP/E2 /mnt/Data/caso_20181122/data
+# Por ahora no funciona la librería
+
+files <- Sys.glob("data/ANA/*/analysis.mem*")
+
+ana_T <- lapply(files, function(f) {
+  date_time <- ymd_hms(substr(f, 10, 23))
+  ens <- substr(basename(f), 13, 15)
+  message(paste0("Leyendo el archivo ",f))
+  ReadNetCDF(f, vars = c("T", "XLAT", "XLONG"), subset = list(bottom_top = 16)) %>% 
+    .[, c("Time", "south_north", "west_east", "bottom_top") := NULL] %>% 
+    .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
+    .[]
+}) %>% 
+  rbindlist()
+
+colnames(ana_T) <- c("var", "lat", "lon", "date.time", "ens")
+```
+
+```{r}
+copy(ana_T) %>% 
+  .[, mean := mean(var), by = .(lon, lat, date.time)] %>% 
+  .[, .(sprd = sd(var - mean)), by = .(date.time)] %>% 
+  ggplot(aes(date.time, sprd)) +
+  geom_line() +
+  labs(title = "Ensemble spread", subtitle = "Temperature, level 16 (~500 hPa)")
+```
+
+
+```{r}
+copy(ana_T) %>% 
+  .[, mean := mean(var), by = .(lon, lat, date.time)] %>% 
+  .[, .(sprd = sd(var - mean)), by = .(lon, lat, date.time)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = sprd)) +
+  scale_color_viridis_c() +
+  facet_wrap(~factor(date.time)) +
+  labs(title = "Ensemble spread", subtitle = "Temperature, level 16 (~500 hPa)")
+```
+
+```{r}
+ana_T_mean <- ana_T[, .(var = mean(var)), by = .(lon, lat, date.time)] %>% 
+  .[, ens := "000"]
+
+rbind(ana_T, ana_T_mean) %>% 
+  .[, .(var = mean(var)), by = .(date.time, ens)] %>% 
+  ggplot(aes(date.time, var)) +
+  geom_line(aes(group = ens), color = "grey", alpha = 0.5) +
+  geom_line(data = function(x) subset(x, ens == "000"), color = "red")
+```
+
+```{r message=FALSE}
+# sshfs jruiz@cheyenne.ucar.edu:/glade/scratch/jruiz/EXP/E2 /mnt/Data/caso_20181122/data
+# Por ahora no funciona la librería
+
+files <- Sys.glob("data/ANA/*/analysis.mem*")
+
+ana_U <- lapply(files, function(f) {
+  date_time <- ymd_hms(substr(f, 10, 23))
+  ens <- substr(basename(f), 13, 15)
+  message(paste0("Leyendo el archivo ",f))
+  ReadNetCDF(f, vars = c("U", "XLAT_U", "XLONG_U"), subset = list(bottom_top = 16)) %>% 
+    .[, c("Time", "south_north", "west_east_stag", "bottom_top") := NULL] %>% 
+    .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
+    .[]
+}) %>% 
+  rbindlist()
+
+colnames(ana_U) <- c("var", "lat", "lon", "date.time", "ens")
+```
+
+```{r}
+copy(ana_U) %>% 
+  .[, mean := mean(var), by = .(lon, lat, date.time)] %>% 
+  .[, .(sprd = sd(var - mean)), by = .(date.time)] %>% 
+  ggplot(aes(date.time, sprd)) +
+  geom_line() +
+  labs(title = "Ensemble spread", subtitle = "Viento zonal, level 16 (~500 hPa)")
+
+copy(ana_U) %>% 
+  .[, mean := mean(var), by = .(lon, lat, date.time)] %>% 
+  .[, .(sprd = sd(var - mean)), by = .(lon, lat, date.time)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = sprd)) +
+  scale_color_viridis_c() +
+  facet_wrap(~factor(date.time)) +
+  labs(title = "Ensemble spread", subtitle = "Viento zonal, level 16 (~500 hPa)")
+```
+
+```{r message=FALSE}
+# sshfs jruiz@cheyenne.ucar.edu:/glade/scratch/jruiz/EXP/E2 /mnt/Data/caso_20181122/data
+# Por ahora no funciona la librería
+
+files <- Sys.glob("data/ANA/*/analysis.mem*")
+
+ana_V <- lapply(files, function(f) {
+  date_time <- ymd_hms(substr(f, 10, 23))
+  ens <- substr(basename(f), 13, 15)
+  message(paste0("Leyendo el archivo ",f))
+  ReadNetCDF(f, vars = c("V", "XLAT_V", "XLONG_V"), subset = list(bottom_top = 16)) %>% 
+    .[, c("Time", "south_north_stag", "west_east", "bottom_top") := NULL] %>% 
+    .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
+    .[]
+}) %>% 
+  rbindlist()
+
+colnames(ana_V) <- c("var", "lat", "lon", "date.time", "ens")
+```
+
+```{r}
+copy(ana_V) %>% 
+  .[, mean := mean(var), by = .(lon, lat, date.time)] %>% 
+  .[, .(sprd = sd(var - mean)), by = .(date.time)] %>% 
+  ggplot(aes(date.time, sprd)) +
+  geom_line() +
+  labs(title = "Ensemble spread", subtitle = "Viento meridional, level 16 (~500 hPa)")
+
+copy(ana_V) %>% 
+  .[, mean := mean(var), by = .(lon, lat, date.time)] %>% 
+  .[, .(sprd = sd(var - mean)), by = .(lon, lat, date.time)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = sprd)) +
+  scale_color_viridis_c() +
+  facet_wrap(~factor(date.time)) +
+  labs(title = "Ensemble spread", subtitle = "Viento meridional, level 16 (~500 hPa)")
+
+```
+
+
+```{r eval=FALSE, message=FALSE, include=FALSE}
+# sshfs jruiz@cheyenne.ucar.edu:/glade/scratch/jruiz/EXP/E2 /mnt/Data/caso_20181122/data
+# Por ahora no funciona la librería
+
+files <- Sys.glob("data/ANA/*/analysis.mem*")
+
+ana_G <- lapply(files, function(f) {
+  date_time <- ymd_hms(substr(f, 10, 23))
+  ens <- substr(basename(f), 13, 15)
+  message(paste0("Leyendo el archivo ",f))
+  ReadNetCDF(f, vars = c("PH", "PHB", "XLAT", "XLONG"), subset = list(bottom_top = 16)) %>% 
+     .[, GEOP := PH + PHB] %>% 
+    .[, c("Time", "south_north", "west_east", "bottom_top_stag", "PH", "PHB") := NULL] %>% 
+    .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
+    .[]
+}) %>% 
+  rbindlist()
+
+colnames(ana_G) <- c("lat", "lon", "var", "date.time", "ens")
+```
+
+```{r eval=FALSE, include=FALSE}
+copy(ana_U) %>% 
+  .[, mean := mean(var), by = .(lon, lat, date.time)] %>% 
+  .[, .(sprd = sd(var - mean)), by = .(date.time)] %>% 
+  ggplot(aes(date.time, sprd)) +
+  geom_line() +
+  labs(title = "Ensemble spread", subtitle = "Geopotencial, level 16 (~500 hPa)")
+
+copy(ana_G) %>% 
+  .[, mean := mean(var), by = .(lon, lat, date.time)] %>% 
+  .[, .(sprd = sd(var - mean)), by = .(lon, lat, date.time)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = sprd)) +
+  scale_color_viridis_c() +
+  facet_wrap(~factor(date.time)) +
+  labs(title = "Ensemble spread", subtitle = "Geopotencial, level 16 (~500 hPa)")
+
+```
+
+### Observaciones
+
+
+```{r message=FALSE}
+files <- Sys.glob("data/ANA/*/diagfiles/asim_conv_*.mem001*")
+
+obs <- lapply(files, function(f) {
+  date_time <- ymd_hms(substr(basename(f), 11, 24))
+  ens <- substr(basename(f), 29, 31)
+  
+  message(paste0("Leyendo el archivo ",f))
+  fread(f, na.strings = c("0.100E+11", "-0.100E+06", "-99999.90", "-100000.00")) %>% 
+    .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  .[, c("V2", "V4") := NULL]
+
+colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "date.time", "ens")
+```
+
+```{r}
+obs[usage.flag == 1 & var == "t", .N, by = .(stationID, lon, lat, date.time)] %>% 
+  .[, date.time := factor(date.time)] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_sf(data = map, inherit.aes = FALSE) +
+  geom_point(aes(fill = N, size = N), shape = 21, alpha = 0.5) +
+  scale_size_area(max_size = 3, guide = "none") +
+  coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
+  facet_wrap(~date.time, ncol = 4) +
+  labs(title = "Observaciones en prepbufr nivel 3", x = "lon") +
+  theme(legend.position = "bottom")
+```
+
