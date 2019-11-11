@@ -1,0 +1,67 @@
+---
+title: "04_cape_cin"
+author: "Pao"
+date: "11/11/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(data.table)
+library(metR)
+library(aiRthermo)
+library(reticulate)
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+```
+
+## Análisis de CAPE y CIN
+
+Quermeos comparar los experimentos E3 que asimila el prepbufr nivel 3 (oficiales + automáticas) y el E4 que solo asimila prepbufr nivel 1. Por ahora nos vamos a concentrar en la media del aálisis.
+
+```{r read}
+path <- "E3/ANA/20181122060000/analysis.ensmean"
+
+# file_test <- ReadNetCDF(path, vars = c(lon = "XLONG", lat = "XLAT", "P", "PB", "T", "QVAPOR")) %>%
+#   .[, P := P + PB] %>%
+#   .[, T := (T + 290)*(P/100000)^(2/7)] %>%
+#   .[, c("Time", "south_north", "west_east", "PB") := NULL]
+
+file_test <- ReadNetCDF(path, vars = c("P", "PB", "T", "QVAPOR")) %>%
+  .[, P := P + PB] %>%
+  .[, T := (T + 290)*(P/100000)^(2/7)] %>%
+  .[, c("PB") := NULL]
+
+capear <- function(p, t, q) {
+  # browser()
+  cape <- CAPE_CIN(p, t, q)
+  
+  list(cape = cape$cape,
+       cin = cape$cin,
+       outCode = cape$outCode)
+  
+}
+
+cape <- file_test[, capear(P, T, QVAPOR), by = .(south_north, west_east)]
+
+
+cape[] %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_point(aes(color = cape)) +
+  scale_color_viridis_c() +
+  coord_equal()
+
+```
+
+
+
+```{python}
+from netCDF4 import Dataset
+from wrf import getvar
+
+ncfile = Dataset("E3/ANA/20181122060000/analysis.ensmean")
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
