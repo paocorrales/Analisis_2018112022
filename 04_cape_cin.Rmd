@@ -29,7 +29,7 @@ path <- "E3/ANA/20181122060000/analysis.ensmean"
 #   .[, T := (T + 290)*(P/100000)^(2/7)] %>%
 #   .[, c("Time", "south_north", "west_east", "PB") := NULL]
 
-file_test <- ReadNetCDF(path, vars = c("P", "PB", "T", "QVAPOR")) %>%
+file_test <- ReadNetCDF(path, vars = c("P", "PB", "T", "QVAPOR"), subset = list(south_north = 105:107)) %>%
   .[, P := P + PB] %>%
   .[, T := (T + 290)*(P/100000)^(2/7)] %>%
   .[, c("PB") := NULL]
@@ -56,12 +56,64 @@ cape[] %>%
 ```
 
 
+```{r}
+library(patchwork)
+cape <- fread("analisis/cape_cin_ana_E3.csv") %>% 
+  .[, date := lubridate::ymd_hms(date)]
 
-```{python}
-from netCDF4 import Dataset
-from wrf import getvar
-
-ncfile = Dataset("E3/ANA/20181122060000/analysis.ensmean")
+cape[, .(mean_cape = mean(cape)), by = .(west_east, date)] %>% 
+  ggplot(aes(west_east, date)) +
+  geom_contour_fill(aes(z = mean_cape), breaks = seq(500, 4000, 500)) +
+  scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
+                       breaks = seq(500, 4000, 500),
+                       guide = guide_colorstrip(barwidth = 15,
+                                                barheight = 0.8)) +
+  labs(title = "CONV Only",
+       subtitle = "CAPE") +
+  coord_cartesian(xlim = c(0, 200)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  
+cape[, .(mean_cin = mean(cin)), by = .(west_east, date)] %>% 
+  ggplot(aes(west_east, date)) +
+  geom_contour_fill(aes(z = mean_cin), breaks = seq(-500, -10, 50)) +
+  scale_fill_distiller(name = NULL, palette = "YlGnBu", direction = -1,
+                       breaks = seq(-500, -10, 50),
+                       guide = guide_colorstrip(barwidth = 15,
+                                                barheight = 0.8)) +
+  labs(subtitle = "CIN") +
+  coord_cartesian(xlim = c(0, 200)) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+library(patchwork)
+cape <- fread("analisis/cape_cin_ana_E4.csv") %>% 
+  .[, date := lubridate::ymd_hms(date)]
+
+cape[, .(mean_cape = mean(cape)), by = .(west_east, date)] %>% 
+  ggplot(aes(west_east, date)) +
+  geom_contour_fill(aes(z = mean_cape), breaks = seq(500, 4000, 500)) +
+  scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
+                       breaks = seq(500, 4000, 500),
+                       guide = guide_colorstrip(barwidth = 15,
+                                                barheight = 0.8)) +
+  labs(title = "CONV Only",
+       subtitle = "CAPE") +
+  coord_cartesian(xlim = c(0, 200)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  
+cape[, .(mean_cin = mean(cin)), by = .(west_east, date)] %>% 
+  ggplot(aes(west_east, date)) +
+  geom_contour_fill(aes(z = mean_cin), breaks = seq(-500, -10, 50)) +
+  scale_fill_distiller(name = NULL, palette = "YlGnBu", direction = -1,
+                       breaks = seq(-500, -10, 50),
+                       guide = guide_colorstrip(barwidth = 15,
+                                                barheight = 0.8)) +
+  labs(subtitle = "CIN") +
+  coord_cartesian(xlim = c(0, 200)) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
