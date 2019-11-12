@@ -14,10 +14,11 @@ capear <- function(p, t, q) {
        outCode = cape$outCode)
 }
 
-path <- "/glade/scratch/jruiz/EXP/E4/ANA/2018112*/analysis.ensmean"
+fcst <- c("20181121210000", "20181122000000", "20181122030000", "20181122060000")
+
+files <- map(fcst, function(x) paste0("/glade/scratch/jruiz/EXP/E4/ANA/", x, "/analysis.ensmean"))
 lat_band <- list(south_north = 105:109)
 
-files <- Sys.glob(path)
 files
 
 for (f in 1:length(files)) {
@@ -25,7 +26,7 @@ for (f in 1:length(files)) {
   date <- lubridate::ymd_hms(str_extract(files[f], "\\d{14}"))
   print(paste("Analisis", date))
   
-  ana <- ReadNetCDF(files[f], vars = c("P", "PB", "T", "QVAPOR"), subset = lat_band) %>%
+  ana <- ReadNetCDF(files[[f]], vars = c("P", "PB", "T", "QVAPOR")) %>%
     .[, P := P + PB] %>%
     .[, T := (T + 290)*(P/100000)^(2/7)] %>%
     .[, date := date] %>% 
@@ -40,4 +41,4 @@ for (f in 1:length(files)) {
   }
 }
 
-fwrite(out, "/glade/scratch/jruiz/EXP/analisis/cape_cin_ana_E4.csv")
+fwrite(out, "/glade/scratch/jruiz/EXP/analisis/cape_cin_espacial_ana_E4.csv")
