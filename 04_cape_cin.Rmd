@@ -17,9 +17,11 @@ library(reticulate)
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
 ```
 
-## Análisis de CAPE y CIN
+# Análisis 
 
 Quermeos comparar los experimentos E3 que asimila el prepbufr nivel 3 (oficiales + automáticas) y el E4 que solo asimila prepbufr nivel 1. Por ahora nos vamos a concentrar en la media del aálisis.
+
+## CAPE y CIN
 
 ```{r read}
 path <- "E3/ANA/20181122060000/analysis.ensmean"
@@ -29,7 +31,7 @@ path <- "E3/ANA/20181122060000/analysis.ensmean"
 #   .[, T := (T + 290)*(P/100000)^(2/7)] %>%
 #   .[, c("Time", "south_north", "west_east", "PB") := NULL]
 
-file_test <- ReadNetCDF(path, vars = c("P", "PB", "T", "QVAPOR")) %>%
+file_test <- ReadNetCDF(path, vars = c("P", "PB", "T", "QVAPOR"), subset = list(south_north = 105:107)) %>%
   .[, P := P + PB] %>%
   .[, T := (T + 290)*(P/100000)^(2/7)] %>%
   .[, c("PB") := NULL]
@@ -56,12 +58,138 @@ cape[] %>%
 ```
 
 
+```{r}
+library(patchwork)
+cape <- fread("analisis/cape_cin_ana_E3.csv") %>% 
+  .[, date := lubridate::ymd_hms(date)]
 
-```{python}
-from netCDF4 import Dataset
-from wrf import getvar
-
-ncfile = Dataset("E3/ANA/20181122060000/analysis.ensmean")
+cape[, .(mean_cape = mean(cape)), by = .(west_east, date)] %>% 
+  ggplot(aes(west_east, date)) +
+  geom_contour_fill(aes(z = mean_cape), breaks = seq(500, 4000, 500)) +
+  scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
+                       breaks = seq(500, 4000, 500),
+                       guide = guide_colorstrip(barwidth = 15,
+                                                barheight = 0.8)) +
+  labs(title = "CONV Only",
+       subtitle = "CAPE") +
+  coord_cartesian(xlim = c(0, 200)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_datetime(expand = c(0,0)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  
+cape[, .(mean_cin = mean(cin)), by = .(west_east, date)] %>% 
+  ggplot(aes(west_east, date)) +
+  geom_contour_fill(aes(z = mean_cin), breaks = seq(-500, -10, 50)) +
+  scale_fill_distiller(name = NULL, palette = "YlGnBu", direction = -1,
+                       breaks = seq(-500, -10, 50),
+                       guide = guide_colorstrip(barwidth = 15,
+                                                barheight = 0.8)) +
+  labs(subtitle = "CIN") +
+  coord_cartesian(xlim = c(0, 200)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_datetime(expand = c(0,0)) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+library(patchwork)
+cape <- fread("analisis/cape_cin_ana_E4.csv") %>% 
+  .[, date := lubridate::ymd_hms(date)]
+
+cape[, .(mean_cape = mean(cape)), by = .(west_east, date)] %>% 
+  ggplot(aes(west_east, date)) +
+  geom_contour_fill(aes(z = mean_cape), breaks = seq(500, 4000, 500)) +
+  scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
+                       breaks = seq(500, 4000, 500),
+                       guide = guide_colorstrip(barwidth = 15,
+                                                barheight = 0.8)) +
+  labs(title = "CONV Only",
+       subtitle = "CAPE") +
+  coord_cartesian(xlim = c(0, 200)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_datetime(expand = c(0,0)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  
+cape[, .(mean_cin = mean(cin)), by = .(west_east, date)] %>% 
+  ggplot(aes(west_east, date)) +
+  geom_contour_fill(aes(z = mean_cin), breaks = seq(-500, -10, 50)) +
+  scale_fill_distiller(name = NULL, palette = "YlGnBu", direction = -1,
+                       breaks = seq(-500, -10, 50),
+                       guide = guide_colorstrip(barwidth = 15,
+                                                barheight = 0.8)) +
+  labs(subtitle = "CIN") +
+  coord_cartesian(xlim = c(0, 200)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_datetime(expand = c(0,0)) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+E3 <- fread("analisis/cape_cin_ana_E3.csv") %>% # Experimento bueno
+  .[, date := lubridate::ymd_hms(date)] %>% 
+  .[, .(cape = mean(cape),
+        cin = mean(cin)), by = .(west_east, date)]
+
+E4 <- fread("analisis/cape_cin_ana_E4.csv") %>% # Experimento malo
+  .[, date := lubridate::ymd_hms(date)] %>% 
+  .[, .(cape = mean(cape),
+        cin = mean(cin)), by = .(west_east, date)]
+
+E4[E3, on = c("west_east", "date")] %>% 
+  .[, `:=`(diff_cape = i.cape - cape,
+           diff_cin = i.cin - cin)] %>% 
+  ggplot(aes(west_east, date)) +
+  geom_contour_fill(aes(z = diff_cin)) +
+  # geom_contour2(aes(z = diff_cin)) +
+  scale_fill_divergent(name = "Difference") +
+  labs(title = "CAPE difference",
+       subtitle = "E1 - E3") +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_datetime(expand = c(0,0)) +
+  theme_minimal()
+    
+
+```
+
+## Temperatura y humedad
+
+Perfiles de temperatura y humedad promediados en todo el dominio
+
+```{r}
+perfil_E3 <- fread("analisis/perfil_T_Q_ana_E3.csv") %>% 
+  .[, date := lubridate::ymd_hms(date)] 
+
+perfil_E4 <- fread("analisis/perfil_T_Q_ana_E4.csv") %>% 
+  .[, date := lubridate::ymd_hms(date)]
+
+perfil_E4[perfil_E3, on = c("bottom_top", "date")] %>%
+  .[] %>% 
+  .[, `:=`(diff_T = i.T - T,
+           diff_Q = i.QVAPOR - QVAPOR)] %>% 
+  ggplot(aes(date, bottom_top)) +
+  geom_contour_fill(aes(z = diff_T)) +
+  scale_fill_divergent(name = "Difference") +
+  labs(title = "Temperature difference",
+       subtitle = "E1 - E2") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_datetime(expand = c(0,0)) +
+  theme_minimal()
+
+perfil_E4[perfil_E3, on = c("bottom_top", "date")] %>%
+  .[] %>% 
+  .[, `:=`(diff_T = i.T - T,
+           diff_Q = i.QVAPOR - QVAPOR)] %>% 
+  ggplot(aes(date, bottom_top)) +
+  geom_contour_fill(aes(z = diff_Q)) +
+  scale_fill_divergent(name = "Difference") +
+  labs(title = "Humidity difference",
+       subtitle = "E1 - E2") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_datetime(expand = c(0,0)) +
+  theme_minimal()
+```
+
