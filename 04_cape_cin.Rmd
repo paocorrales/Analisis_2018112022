@@ -155,6 +155,27 @@ E4[E3, on = c("west_east", "date")] %>%
 
 ```
 
+```{r}
+E3 <- fread("analisis/cape_cin_espacial_ana_E3.csv") %>% 
+  .[, `:=`(date = lubridate::ymd_hms(date),
+           exp = "E3")]
+E4 <- fread("analisis/cape_cin_espacial_ana_E4.csv") %>% 
+  .[, `:=`(date = lubridate::ymd_hms(date),
+           exp = "E4")]
+rbind(E3, E4) %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_contour_fill(aes(z = cape), breaks = seq(500, 5000, 500)) +
+  scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
+                       breaks = seq(500, 5000, 500),
+                       guide = guide_colorstrip(barwidth = 20,
+                                                barheight = 0.8)) +
+  facet_grid(exp ~ factor(date)) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+
 ## Temperatura y humedad
 
 Perfiles de temperatura y humedad promediados en todo el dominio
