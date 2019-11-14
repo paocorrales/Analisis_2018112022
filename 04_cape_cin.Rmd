@@ -57,7 +57,7 @@ capear <- function(p, t, q) {
   
 }
 
-cape <- file_test[, capear(P, T, QVAPOR), by = .(south_north, west_east)]
+invisible(capture.output(cape <- file_test[, capear(P, T, QVAPOR), by = .(south_north, west_east)]))
 
 
 cape[] %>% 
@@ -252,7 +252,7 @@ temp_spd[bottom_top == 7] %>%
   coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
   geom_vector(aes(dx = u, dy = v), data = function(x) x[is.cross(lon, lat, 4)]) +
   scale_mag() +
-  facet_wrap(exp ~ date) +
+  facet_grid(exp ~ date) +
   theme_minimal()
 ```
 
