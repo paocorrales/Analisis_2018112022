@@ -1,5 +1,5 @@
 ---
-title: "04_cape_cin"
+title: "04_Analisis"
 author: "Pao"
 date: "11/11/2019"
 output: html_document
@@ -34,7 +34,7 @@ Quermeos comparar los experimentos E3 que asimila el prepbufr nivel 3 (oficiales
 
 ## CAPE y CIN
 
-```{r read}
+```{r read, include=FALSE}
 path <- "E3/ANA/20181122060000/analysis.ensmean"
 
 # file_test <- ReadNetCDF(path, vars = c(lon = "XLONG", lat = "XLAT", "P", "PB", "T", "QVAPOR")) %>%
@@ -154,7 +154,7 @@ E4[E3, on = c("west_east", "date")] %>%
   .[, `:=`(diff_cape = i.cape - cape,
            diff_cin = i.cin - cin)] %>% 
   ggplot(aes(west_east, date)) +
-  geom_contour_fill(aes(z = diff_cin)) +
+  geom_contour_fill(aes(z = diff_cape)) +
   # geom_contour2(aes(z = diff_cin)) +
   scale_fill_divergent(name = "Difference") +
   labs(title = "CAPE difference",
@@ -175,7 +175,7 @@ E4 <- fread("analisis/cape_cin_espacial_ana_E4.csv") %>%
            exp = "E4")]
 rbind(E3, E4) %>% 
   ggplot(aes(west_east, south_north)) +
-  geom_contour_fill(aes(z = cape), breaks = seq(500, 5000, 500)) +
+  geom_contour_fill(aes(z = cape), breaks = seq(700, 5000, 500)) +
   scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
                        breaks = seq(500, 5000, 500),
                        guide = guide_colorstrip(barwidth = 20,
@@ -253,7 +253,8 @@ temp_spd[bottom_top == 7] %>%
   geom_vector(aes(dx = u, dy = v), data = function(x) x[is.cross(lon, lat, 4)]) +
   scale_mag() +
   facet_grid(exp ~ date) +
-  theme_minimal()
+  theme_minimal() +
+  metR:::theme_field()
 ```
 
 ## Humedad en niveles bajos
@@ -279,7 +280,8 @@ q[bottom_top <= 7, .(q = mean(q)), by = .(south_north, west_east, date, exp)] %>
   geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.2) +
   coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
   facet_grid(exp ~ date) +
-  theme_minimal()
+  theme_minimal() +
+  metR:::theme_field()
 
 ```
 
