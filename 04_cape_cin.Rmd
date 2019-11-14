@@ -9,12 +9,23 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
+library(lubridate)
 library(data.table)
 library(metR)
 library(aiRthermo)
 library(reticulate)
 
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+
+coord <- ReadNetCDF("E3/ANA/20181122060000/analysis.ensmean", vars = c(lon = "XLONG", lat = "XLAT")) %>% 
+  .[, Time := NULL]
+
+# ReadNetCDF("E3/ANA/20181122060000/analysis.ensmean", vars = c("P", "PB")) %>% 
+#   .[, P := (P + PB)/100] %>% 
+#   .[P %between% c(898, 902)] %>% 
+#   .[] %>% 
+#   ggplot(aes(bottom_top)) +
+#   geom_density()
 ```
 
 # Análisis 
@@ -46,7 +57,7 @@ capear <- function(p, t, q) {
   
 }
 
-cape <- file_test[, capear(P, T, QVAPOR), by = .(south_north, west_east)]
+invisible(capture.output(cape <- file_test[, capear(P, T, QVAPOR), by = .(south_north, west_east)]))
 
 
 cape[] %>% 
@@ -61,7 +72,7 @@ cape[] %>%
 ```{r}
 library(patchwork)
 cape <- fread("analisis/cape_cin_ana_E3.csv") %>% 
-  .[, date := lubridate::ymd_hms(date)]
+  .[, date := ymd_hms(date)]
 
 cape[, .(mean_cape = mean(cape)), by = .(west_east, date)] %>% 
   ggplot(aes(west_east, date)) +
@@ -96,7 +107,7 @@ cape[, .(mean_cin = mean(cin)), by = .(west_east, date)] %>%
 ```{r}
 library(patchwork)
 cape <- fread("analisis/cape_cin_ana_E4.csv") %>% 
-  .[, date := lubridate::ymd_hms(date)]
+  .[, date := ymd_hms(date)]
 
 cape[, .(mean_cape = mean(cape)), by = .(west_east, date)] %>% 
   ggplot(aes(west_east, date)) +
@@ -130,12 +141,12 @@ cape[, .(mean_cin = mean(cin)), by = .(west_east, date)] %>%
 
 ```{r}
 E3 <- fread("analisis/cape_cin_ana_E3.csv") %>% # Experimento bueno
-  .[, date := lubridate::ymd_hms(date)] %>% 
+  .[, date := ymd_hms(date)] %>% 
   .[, .(cape = mean(cape),
         cin = mean(cin)), by = .(west_east, date)]
 
 E4 <- fread("analisis/cape_cin_ana_E4.csv") %>% # Experimento malo
-  .[, date := lubridate::ymd_hms(date)] %>% 
+  .[, date := ymd_hms(date)] %>% 
   .[, .(cape = mean(cape),
         cin = mean(cin)), by = .(west_east, date)]
 
@@ -155,16 +166,37 @@ E4[E3, on = c("west_east", "date")] %>%
 
 ```
 
+```{r}
+E3 <- fread("analisis/cape_cin_espacial_ana_E3.csv") %>% 
+  .[, `:=`(date = ymd_hms(date),
+           exp = "E3")]
+E4 <- fread("analisis/cape_cin_espacial_ana_E4.csv") %>% 
+  .[, `:=`(date = ymd_hms(date),
+           exp = "E4")]
+rbind(E3, E4) %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_contour_fill(aes(z = cape), breaks = seq(500, 5000, 500)) +
+  scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
+                       breaks = seq(500, 5000, 500),
+                       guide = guide_colorstrip(barwidth = 20,
+                                                barheight = 0.8)) +
+  facet_grid(exp ~ factor(date)) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+
 ## Temperatura y humedad
 
 Perfiles de temperatura y humedad promediados en todo el dominio
 
 ```{r}
 perfil_E3 <- fread("analisis/perfil_T_Q_ana_E3.csv") %>% 
-  .[, date := lubridate::ymd_hms(date)] 
+  .[, date := ymd_hms(date)] 
 
 perfil_E4 <- fread("analisis/perfil_T_Q_ana_E4.csv") %>% 
-  .[, date := lubridate::ymd_hms(date)]
+  .[, date := ymd_hms(date)]
 
 perfil_E4[perfil_E3, on = c("bottom_top", "date")] %>%
   .[] %>% 
@@ -191,5 +223,63 @@ perfil_E4[perfil_E3, on = c("bottom_top", "date")] %>%
   scale_y_continuous(expand = c(0,0)) +
   scale_x_datetime(expand = c(0,0)) +
   theme_minimal()
+```
+
+## Circulación
+
+```{r}
+fcsts <- expand_grid(fcsts = c("20181121210000", "20181122000000", "20181122030000", "20181122060000"),
+                        exp = c("E3", "E4"))
+
+temp_spd <- lapply(seq_len(nrow(fcsts)), function(f) {
+  
+  tmp <- ReadNetCDF(paste0("analisis/u_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(u = "uvmet")) %>% 
+  .[, v := ReadNetCDF(paste0("analisis/v_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(v = "uvmet"), out = "vector")] %>% 
+  .[, t := ReadNetCDF(paste0("analisis/t_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"),  vars = c(t = "temp"), out = "vector")] %>% 
+  .[, date :=  ymd_hms(fcsts[f, 1])] %>% 
+  .[, exp := fcsts[f, 2]] %>%  
+  .[]
+}) %>% 
+  rbindlist()
+
+temp_spd[bottom_top == 7] %>% 
+  .[coord, on = c("south_north", "west_east")] %>% 
+  .[, date := factor(date)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = t - 273)) +
+  scale_color_distiller("Temperature", palette = "RdBu", direction = -1) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.2) +
+  coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
+  geom_vector(aes(dx = u, dy = v), data = function(x) x[is.cross(lon, lat, 4)]) +
+  scale_mag() +
+  facet_grid(exp ~ date) +
+  theme_minimal()
+```
+
+## Humedad en niveles bajos
+
+```{r}
+
+
+q <- lapply(seq_len(nrow(fcsts)), function(f) {
+  
+  tmp <- ReadNetCDF(paste0("analisis/q_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(q = "QVAPOR")) %>% 
+  .[, date :=  ymd_hms(fcsts[f, 1])] %>% 
+  .[, exp := fcsts[f, 2]] %>%  
+  .[]
+}) %>% 
+  rbindlist()
+
+q[bottom_top <= 7, .(q = mean(q)), by = .(south_north, west_east, date, exp)] %>% 
+  .[coord, on = c("south_north", "west_east")] %>% 
+  .[, date := factor(date)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = q)) +
+  scale_color_distiller(palette = "BrBG", direction = 1) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.2) +
+  coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
+  facet_grid(exp ~ date) +
+  theme_minimal()
+
 ```
 
