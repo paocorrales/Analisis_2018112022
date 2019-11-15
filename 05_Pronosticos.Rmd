@@ -50,67 +50,95 @@ pp_imerg <- lapply(files, function(f) {
   end <- str_extract(str_extract(f, "E\\d{6}"), "\\d{6}")
   
   pp <- ReadNetCDF(f, vars = c(pp = "Grid/precipitationCal"), subset = list("Grid/lon" = -80:-50, 
-                                                                       "Grid/lat" = -45:-15)) %>% 
+                                                                            "Grid/lat" = -45:-15)) %>% 
     .[, start_date := ymd_hms(paste(date, start))] %>% 
     .[, end_date := ymd_hms(paste(date, end))] %>% 
     .[]
 }) %>% 
   rbindlist() %>% 
   setnames(c("Grid/lon", "Grid/lat"), c("lon", "lat"))
+
+pp_imerg_acum <- pp_imerg[start_date %between% c(as_datetime("2018-11-22 06:00:00"), as_datetime("2018-11-23 11:30:00")), 
+                          .(pp = sum(pp)), by = .(lon, lat)]
 ```
 
 ```{r}
 fcsts <- expand_grid(fcsts = c("20181121210000", "20181122000000", "20181122030000", "20181122060000"),
-                        exp = c("E3", "E4"))
+                     exp = c("E3", "E4"))
 
 pp <- lapply(seq_len(nrow(fcsts)), function(f) {
   
   tmp <- ReadNetCDF(paste0("analisis/pp_acum_", fcsts[f, 2], "_fcst", fcsts[f, 1], ".nc"), vars = c(pp = "__xarray_dataarray_variable__",
                                                                                                     lon = "XLONG",
                                                                                                     lat = "XLAT")) %>% 
-  .[, init_date :=  ymd_hms(fcsts[f, 1])] %>% 
-  .[, exp := fcsts[f, 2]] %>%  
-  .[]
+    .[, init_date :=  ymd_hms(fcsts[f, 1])] %>% 
+    .[, exp := fcsts[f, 2]] %>%  
+    .[]
 }) %>% 
   rbindlist()
+
+pp_inter <- pp[, interp::interp(lon, lat, pp, output = "points", xo = pp_imerg_acum$lon, yo = pp_imerg_acum$lat), 
+               by = .(init_date, exp)] %>% 
+  setnames(c("x", "y", "z"), c("lon", "lat", "pp"))
 ```
 
 ```{r}
-pp_imerg[start_date %between% c(as_datetime("2018-11-22 06:00:00"), as_datetime("2018-11-23 11:30:00")), 
-                    .(pp = sum(pp)), by = .(lon, lat)] %>% 
+pp_imerg_acum %>% 
   ggplot(aes(lon, lat)) +
   geom_contour_fill(aes(z = pp), breaks = seq(0, 360, 50)) +
   # geom_point(aes(color = pp), breaks = seq(50, 360, 50)) +
   scale_fill_gradient(low  = "white", high = "navy",
-                       # limits = c(0, 350),
-                       oob = scales::squish,
-                       breaks = seq(0, 360, 50)) +
+                      # limits = c(0, 350),
+                      oob = scales::squish,
+                      breaks = seq(0, 360, 50)) +
   geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.2) +
   coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
   theme_minimal() +
-  labs("Cumulado entre las 06 del 22 y las 00 del 22. FALTA acumular 23!")
+  labs(title = "Cumulado entre las 06 del 22 y las 12 del 23")
 
-pp[, init_date := factor(init_date)] %>% 
+pp_inter %>% 
+  .[, init_date := factor(init_date)] %>% 
+  .[init_date == unique(init_date)[4]] %>% 
   ggplot(aes(lon, lat)) +
-  # geom_contour_fill(aes(z = pp), breaks = seq(0, 360, 50)) +
-  geom_point(aes(color = pp), breaks = seq(50, 360, 50)) +
-  scale_color_gradient(low  = "white", high = "navy",
+  geom_contour_fill(aes(z = pp), breaks = seq(10, 360, 50), na.fill = 0) +
+  # geom_point(aes(color = pp)) +
+  scale_fill_gradient(low  = "white", high = "navy",
                        # limits = c(0, 350),
                        oob = scales::squish,
                        breaks = seq(0, 360, 50)) +
-  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.2) +
+  geom_contour(data = pp_imerg_acum, aes(z = pp, size = ..level..), breaks = seq(10, 360, 50), color =  "gray10") +
+  scale_size_continuous(range = c(0.05, 1.5)) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.1) +
   coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
   facet_grid(exp ~ init_date) +
   theme_minimal() +
-  labs("Cumulado entre las 06 del 22 y las 06 del 23")
+  labs(title = "Acumulado entre las 06 del 22 y las 06 del 23")
+
+pp_inter %>% 
+  .[, init_date := factor(init_date)] %>% 
+  # .[init_date == unique(init_date)[4]] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_contour_fill(aes(z = pp), breaks = seq(10, 360, 50), na.fill = 0) +
+  # geom_point(aes(color = pp)) +
+  scale_fill_gradient(low  = "white", high = "navy",
+                       # limits = c(0, 350),
+                       oob = scales::squish,
+                       breaks = seq(0, 360, 50)) +
+  geom_contour(data = pp_imerg_acum, aes(z = pp, size = ..level..), breaks = seq(10, 360, 50), color =  "gray10") +
+  scale_size_continuous(range = c(0.05, 1.5)) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.1) +
+  coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
+  facet_grid(exp ~ init_date) +
+  theme_minimal() +
+  labs(title = "Acumulado entre las 06 del 22 y las 06 del 23")
 ```
- 
- 
+
+
 ```{r}
 pp_hr <- copy(pp_imerg)[, `:=`(hora = hour(start_date),
-                                dia = day(start_date))] %>% 
+                               dia = day(start_date))] %>% 
   .[start_date %between% c(as_datetime("2018-11-22 06:00:00"), as_datetime("2018-11-23 11:30:00")), 
-                    .(pp = sum(pp)), by = .(hora, dia, lon, lat)] %>% 
+    .(pp = sum(pp)), by = .(hora, dia, lon, lat)] %>% 
   .[lat %between% c(-34, -30), .(pp = mean(pp)), by = .(hora, dia, lon)] %>% 
   .[, time := make_datetime(2018, 11, dia, hora)]
 
@@ -119,10 +147,10 @@ pp_hr %>%
   geom_contour_fill(aes(z = pp), breaks = seq(1, 20, 3)) +
   # geom_point(aes(color = pp), breaks = seq(0, 20, 5)) +
   scale_fill_gradient(low  = "white", high = "navy",
-                       # limits = c(0, 350),
-                       oob = scales::squish,
-                       breaks = seq(1, 20, 3)) +
+                      # limits = c(0, 350),
+                      oob = scales::squish,
+                      breaks = seq(1, 20, 3)) +
   theme_minimal() +
   metR:::theme_field()
 ```
- 
+
