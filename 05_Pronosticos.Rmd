@@ -45,7 +45,7 @@ Se usaron las parametrizaciones YSU y KF y todos los pronósticos corrieron hast
 files <- Sys.glob("../IMERG_20181122/*")
 
 pp_imerg <- lapply(files, function(f) {
-  date <- str_extract(f, "\\d{8}")
+  date <- str_extract(str_extract(f, "\\d{8}-"), "\\d{8}")
   start <- str_extract(str_extract(f, "S\\d{6}"), "\\d{6}")
   end <- str_extract(str_extract(f, "E\\d{6}"), "\\d{6}")
   
@@ -135,15 +135,57 @@ pp_inter %>%
 
 
 ```{r}
-pp_hr <- copy(pp_imerg)[, `:=`(hora = hour(start_date),
+pp_imerg_hr <- copy(pp_imerg)[, `:=`(hora = hour(start_date),
                                dia = day(start_date))] %>% 
   .[start_date %between% c(as_datetime("2018-11-22 06:00:00"), as_datetime("2018-11-23 11:30:00")), 
     .(pp = sum(pp)), by = .(hora, dia, lon, lat)] %>% 
   .[lat %between% c(-34, -30), .(pp = mean(pp)), by = .(hora, dia, lon)] %>% 
-  .[, time := make_datetime(2018, 11, dia, hora)]
+  .[, date := make_datetime(2018, 11, dia, hora)]
 
-pp_hr %>% 
-  ggplot(aes(lon, time)) +
+fcsts <- expand_grid(fcsts = c("20181121210000", "20181122000000", "20181122030000", "20181122060000"),
+                     exp = c("E3", "E4"))
+
+pp_hov <- lapply(seq_len(nrow(fcsts)), function(f) {
+  
+  tmp <- fread(paste0("analisis/pp_hov_fcst", fcsts[f, 1], "_", fcsts[f, 2], ".csv")) %>%
+    # .[, pp := pp - pp[date == "2018-11-22T06:00:00Z"]] %>%
+    .[, pp_10 := c(NA, diff(pp)), by = .(west_east, fcst, exp)] %>% 
+    .[date %between% c("2018-11-22T06:00:00Z", "2018-11-23T12:00:00Z")] %>% 
+    .[, date := ymd_hms(date)] %>% 
+    .[]
+}) %>% 
+  rbindlist()
+
+pp_hov_acum <- copy(pp_hov)[, `:=`(hora = hour(date),
+                               dia = day(date))] %>% 
+  .[, .(pp = sum(pp_10)), by = .(hora, dia, west_east, fcst, exp)] %>% 
+  .[, date := make_datetime(2018, 11, dia, hora)]
+
+pp_hov_acum[coord[south_north == 120, .(west_east, lon)], on = c("west_east")] %>% 
+  .[, fcst := factor(fcst)] %>% 
+  ggplot(aes(lon, date)) +
+  # geom_raster(aes(fill = pp))
+  geom_contour_fill(aes(z = round(pp, 6))) +
+  scale_fill_gradient(low  = "white", high = "navy") +
+  geom_contour(data = pp_imerg_hr, aes(z = pp), color = "gray10") +
+  facet_grid(exp ~ fcst)
+
+
+
+pp_hov %>% 
+  ggplot(aes(west_east, date)) +
+  # geom_point(aes(color = pp_10)) +
+  geom_raster(aes(fill = pp_10)) +
+  # geom_contour_fill(aes(z = round(pp, 6))) +
+  scale_fill_gradient(low  = "white", high = "navy") +
+  facet_grid(exp ~ factor(fcst))
+
+```
+
+```{r}
+
+pp_imerg_hr %>% 
+  ggplot(aes(lon, date)) +
   geom_contour_fill(aes(z = pp), breaks = seq(1, 20, 3)) +
   # geom_point(aes(color = pp), breaks = seq(0, 20, 5)) +
   scale_fill_gradient(low  = "white", high = "navy",
