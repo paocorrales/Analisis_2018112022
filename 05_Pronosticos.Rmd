@@ -20,6 +20,13 @@ map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uru
 coord <- ReadNetCDF("E3/ANA/20181122060000/analysis.ensmean", vars = c(lon = "XLONG", lat = "XLAT")) %>% 
   .[, Time := NULL]
 
+exp <- c(E3 = "CONV+AUT",
+         E4 = "CONV")
+
+init_fcst = c("2018-11-22 00:00:00" = "Init time = 00Z",
+              "2018-11-22 06:00:00" = "Init time = 06Z")
+
+
 # ReadNetCDF("E3/ANA/20181122060000/analysis.ensmean", vars = c("P", "PB")) %>% 
 #   .[, P := (P + PB)/100] %>% 
 #   .[P %between% c(898, 902)] %>% 
@@ -98,39 +105,35 @@ pp_imerg_acum %>%
 
 pp_inter %>% 
   .[, init_date := factor(init_date)] %>% 
-  .[init_date == unique(init_date)[4]] %>% 
+  .[init_date == unique(init_date)[2] | init_date == unique(init_date)[4]] %>% 
   ggplot(aes(lon, lat)) +
-  geom_contour_fill(aes(z = pp), breaks = seq(10, 360, 50), na.fill = 0) +
-  # geom_point(aes(color = pp)) +
-  scale_fill_gradient(low  = "white", high = "navy",
+  geom_contour_fill(aes(z = pp), breaks = seq(10, 300, 50), na.fill = 0) +
+  scale_fill_gradient("FCST", low  = "white", high = "black",
                        # limits = c(0, 350),
                        oob = scales::squish,
-                       breaks = seq(0, 360, 50)) +
-  geom_contour(data = pp_imerg_acum, aes(z = pp, size = ..level..), breaks = seq(10, 360, 50), color =  "gray10") +
-  scale_size_continuous(range = c(0.05, 1.5)) +
-  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.1) +
+                       breaks = seq(0, 300, 50),
+                       guide = guide_colorstrip(barwidth = 20,
+                                                barheight = 0.7)) +
+  geom_contour(data = pp_imerg_acum, aes(z = pp, color = ..level..), 
+               breaks = seq(0, 300, 50),
+               size = 1) +
+  scale_color_viridis_c("IMERG", direction = -1,
+                        breaks = seq(0, 300, 50),
+                        guide = guide_colorstrip(inside = TRUE,
+                                                 barwidth = 20,
+                                                barheight = 0.8)) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.5) +
   coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
-  facet_grid(exp ~ init_date) +
-  theme_minimal() +
-  labs(title = "Acumulado entre las 06 del 22 y las 06 del 23")
+  facet_grid(exp ~ init_date, labeller = labeller(exp = exp,
+                                                  init_date = init_fcst)) +
+  labs(title = "Accumulated precipitation",
+       subtitle = "11/22 06Z to 11/23 12Z",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom")
 
-pp_inter %>% 
-  .[, init_date := factor(init_date)] %>% 
-  # .[init_date == unique(init_date)[4]] %>% 
-  ggplot(aes(lon, lat)) +
-  geom_contour_fill(aes(z = pp), breaks = seq(10, 360, 50), na.fill = 0) +
-  # geom_point(aes(color = pp)) +
-  scale_fill_gradient(low  = "white", high = "navy",
-                       # limits = c(0, 350),
-                       oob = scales::squish,
-                       breaks = seq(0, 360, 50)) +
-  geom_contour(data = pp_imerg_acum, aes(z = pp, size = ..level..), breaks = seq(10, 360, 50), color =  "gray10") +
-  scale_size_continuous(range = c(0.05, 1.5)) +
-  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.1) +
-  coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
-  facet_grid(exp ~ init_date) +
-  theme_minimal() +
-  labs(title = "Acumulado entre las 06 del 22 y las 06 del 23")
+ggsave("fig/pp_acum.png", dpi = 200, width = unit(15, "cm"), height = unit(20, "cm"))
 ```
 
 
@@ -140,7 +143,7 @@ pp_imerg_hr <- copy(pp_imerg)[, `:=`(hora = hour(start_date),
   .[start_date %between% c(as_datetime("2018-11-22 06:00:00"), as_datetime("2018-11-23 11:30:00")), 
     .(pp = sum(pp)), by = .(hora, dia, lon, lat)] %>% 
   .[lat %between% c(-34, -30), .(pp = mean(pp)), by = .(hora, dia, lon)] %>% 
-  .[, date := make_datetime(2018, 11, dia, hora)]
+  .[, date := make_datetime(2018, 11, dia, hora)] 
 
 fcsts <- expand_grid(fcsts = c("20181121210000", "20181122000000", "20181122030000", "20181122060000"),
                      exp = c("E3", "E4"))
@@ -152,6 +155,7 @@ pp_hov <- lapply(seq_len(nrow(fcsts)), function(f) {
     .[, pp_10 := c(NA, diff(pp)), by = .(west_east, fcst, exp)] %>% 
     .[date %between% c("2018-11-22T06:00:00Z", "2018-11-23T12:00:00Z")] %>% 
     .[, date := ymd_hms(date)] %>% 
+    .[, fcst := ymd_hms(fcst)] %>% 
     .[]
 }) %>% 
   rbindlist()
@@ -163,23 +167,36 @@ pp_hov_acum <- copy(pp_hov)[, `:=`(hora = hour(date),
 
 pp_hov_acum[coord[south_north == 120, .(west_east, lon)], on = c("west_east")] %>% 
   .[, fcst := factor(fcst)] %>% 
+  .[fcst == unique(fcst)[2] | fcst == unique(fcst)[4]] %>% 
   ggplot(aes(lon, date)) +
-  # geom_raster(aes(fill = pp))
-  geom_contour_fill(aes(z = round(pp, 6))) +
-  scale_fill_gradient(low  = "white", high = "navy") +
-  geom_contour(data = pp_imerg_hr, aes(z = pp), color = "gray10") +
-  facet_grid(exp ~ fcst)
+  geom_contour_fill(aes(z = round(pp, 6)), breaks = seq(0, 15, 1), na.fill = 0) +
+  scale_fill_gradient("FCST", low  = "white", high = "black",
+                       # limits = c(0, 350),
+                       oob = scales::squish,
+                       breaks = seq(0, 15, 3),
+                       guide = guide_colorstrip(barwidth = 20,
+                                                barheight = 0.7)) +
+  geom_contour(data = pp_imerg_hr, aes(z = pp, color = ..level..), 
+               breaks = seq(0, 20, 3),
+               size = 1) +
+  scale_color_viridis_c("IMERG", direction = -1,
+                        breaks = seq(0, 20, 3),
+                        guide = guide_colorstrip(inside = TRUE,
+                                                 barwidth = 20,
+                                                barheight = 0.8)) +
+  facet_grid(exp ~ fcst, labeller = labeller(exp = exp,
+                                             fcst = init_fcst)) +
+  scale_x_longitude(breaks = seq(-75, -55, 5)) +
+  scale_y_datetime(date_breaks = "6 hours", date_labels = "%m/%d %HZ") +
+  labs(title = "Hovmöller of accumulated precipitation",
+    subtitle = "34ºS to 30ºS latitud",
+    x = "Longitud",
+    y = "Time") +
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE)
 
-
-
-pp_hov %>% 
-  ggplot(aes(west_east, date)) +
-  # geom_point(aes(color = pp_10)) +
-  geom_raster(aes(fill = pp_10)) +
-  # geom_contour_fill(aes(z = round(pp, 6))) +
-  scale_fill_gradient(low  = "white", high = "navy") +
-  facet_grid(exp ~ factor(fcst))
-
+ggsave("fig/pp_hov.png", dpi = 200, width = unit(20, "cm"), height = unit(20, "cm"))
 ```
 
 ```{r}
