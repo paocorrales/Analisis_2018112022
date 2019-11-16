@@ -25,16 +25,27 @@ proj <- paste0("+proj=lcc +lat_1=-30.966 +lat_2=-30.966 +lat_0=-30.966 +lon_0=-6
 ReadNetCDF("E1/wrfinput_d01", vars = c("HGT", "XLAT", "XLONG")) %>% 
   setnames(c("HGT", "XLAT", "XLONG"), c("hgt", "lat", "lon")) %>% 
   ggplot(aes(lon, lat)) +
-  geom_point(aes(color = hgt)) +
-  scale_color_distiller(name = "Topography", type = "seq", palette = "RdYlGn", direction = -1) +
-  geom_sf(data = map, inherit.aes = FALSE, fill = NA) +
+  geom_point(aes(color = hgt), size = 5) +
+  scale_color_distiller(name = NULL, 
+                        type = "seq", 
+                        palette = "RdYlGn", 
+                        direction = -1,
+                        guide = guide_colorstrip(barwidth = 30, 
+                                      barheight = 0.8)) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.5) +
   coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
-  labs(x = "Longitude", y = "Latitude") +
-  theme_minimal() 
+  labs(
+       subtitle = "Topography",
+       x = "Longitude", 
+       y = "Latitude") +
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom") 
+
+ggsave("fig/domain.png", dpi = 100, width = unit(15, "cm"), height = unit(20, "cm"))
 ```
 
 ```{r}
-files <- Sys.glob("E1/diagfiles/asim*")
+files <- Sys.glob("analisis/diagfiles/E3/asim*")
 
 obs <- lapply(files, function(f) {
   date_time <- ymd_hms(substr(basename(f), 11, 24))
@@ -50,21 +61,50 @@ obs <- lapply(files, function(f) {
 colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "date.time", "ens")
 
 unique(obs, by = c("stationID")) %>% 
+  .[type != 290] %>% 
   .[!str_detect(stationID, "SMN")] %>% 
   ggplot(aes(ConvertLongitude(lon), lat)) +
-  geom_sf(data = map, inherit.aes = FALSE) +
-  geom_point(alpha = 0.8, aes(color = is.na(as.numeric(stationID)))) +
-    scale_color_manual(name =  NULL, values = c("TRUE" = "#FD8002", "FALSE" = "#367DB7"),
+  geom_sf(data = map, inherit.aes = FALSE, , size = 0.5) +
+  geom_point(alpha = 0.8, size = 5,
+             aes(color = stationID %in% oficiales)) +
+  scale_color_manual(name =  NULL, values = c("TRUE" = "#FD8002", "FALSE" = "#367DB7"),
                      breaks = c("FALSE", "TRUE"),
-                     labels = c("Official (N = 116)", "Non-official (N = 409)"))+
+                     labels = c("Non-official (N = 820)","Official (N = 327)"))+
   coord_sf(ylim = c(-42, -20), xlim = c(-75, -52)) +
-  labs(x = "Longitud", y = "Latitud") +
-  theme_minimal(base_size = 18) + 
+  labs(x = "Longitude", y = "Latitude") +
+  theme_minimal(base_size = 26) + 
   theme(legend.position = "bottom")
 
-obs[ens == "001" & date.time == unique(date.time)[1]] %>%
+ggsave("fig/obs.png", dpi = 120, width = unit(15, "cm"), height = unit(20, "cm"))
+
+obs[ens == "mea" & date.time == unique(date.time)[1]] %>%
   # unique(by = c("stationID")) %>% 
   .[, station := ifelse(is.na(as.numeric(stationID)), "non-official", "offitial")] %>% 
   .[, .N, by = .(station)]
 
 ```
+
+```{r}
+files <- Sys.glob("analisis/diagfiles/E4/asim*")
+
+obsE4 <- lapply(files, function(f) {
+  date_time <- ymd_hms(substr(basename(f), 11, 24))
+  ens <- substr(basename(f), 29, 31)
+  fread(f, na.strings = c("0.100E+11", "-0.100E+06", "-99999.90", "-100000.00")) %>% 
+    .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  .[, c("V2", "V4") := NULL]
+
+colnames(obsE4) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "date.time", "ens")
+
+oficiales <- obsE4[type != 290, unique(stationID)]
+
+no_oficiales <- unique(obs, by = c("stationID")) %>% 
+  .[type != 290] %>% 
+  .[!str_detect(stationID, "SMN")] %>%
+  .[!stationID %in% oficiales & type != 290, stationID]
+```
+
