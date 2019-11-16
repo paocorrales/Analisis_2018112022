@@ -4,7 +4,7 @@ author: "Pao"
 date: "11/11/2019"
 output: html_document
 ---
-
+  
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -17,8 +17,13 @@ library(reticulate)
 
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
 
-coord <- ReadNetCDF("E3/ANA/20181122060000/analysis.ensmean", vars = c(lon = "XLONG", lat = "XLAT")) %>% 
-  .[, Time := NULL]
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
+
+# coord <- ReadNetCDF("analysis.ensmean", 
+#                     vars = c(lon = "XLONG", lat = "XLAT")) %>% 
+#   .[, Time := NULL]
 
 # ReadNetCDF("E3/ANA/20181122060000/analysis.ensmean", vars = c("P", "PB")) %>% 
 #   .[, P := (P + PB)/100] %>% 
@@ -35,156 +40,84 @@ Quermeos comparar los experimentos E3 que asimila el prepbufr nivel 3 (oficiales
 ## CAPE y CIN
 
 ```{r read, include=FALSE}
-path <- "E3/ANA/20181122060000/analysis.ensmean"
+files <- list.files("mucape", full.names = TRUE)
 
-# file_test <- ReadNetCDF(path, vars = c(lon = "XLONG", lat = "XLAT", "P", "PB", "T", "QVAPOR")) %>%
-#   .[, P := P + PB] %>%
-#   .[, T := (T + 290)*(P/100000)^(2/7)] %>%
-#   .[, c("Time", "south_north", "west_east", "PB") := NULL]
-
-file_test <- ReadNetCDF(path, vars = c("P", "PB", "T", "QVAPOR"), subset = list(south_north = 105:107)) %>%
-  .[, P := P + PB] %>%
-  .[, T := (T + 290)*(P/100000)^(2/7)] %>%
-  .[, c("PB") := NULL]
-
-capear <- function(p, t, q) {
-  # browser()
-  cape <- CAPE_CIN(p, t, q)
+cape <- lapply(files, function(file) {
+  details <- unglue::unglue(file, "mucape/mcape_ana_{exp}_{date}.nc")[[1]]
   
-  list(cape = cape$cape,
-       cin = cape$cin,
-       outCode = cape$outCode)
-  
+  ReadNetCDF(file, vars = c(value = "cape_2d")) %>% 
+    .[, `:=`(exp = details$exp, 
+             date = lubridate::ymd_hms(details$date))] %>%
+    setnames(old = "mcape_mcin_lcl_lfc", new = "variable") %>% 
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  .[variable == "mcape"]
+
+coord <- ReadNetCDF(files[1], vars = c(lon = "XLONG")) %>% 
+  .[, lat := ReadNetCDF(files[1], vars = c(lat = "XLAT"))$lat]
+
+```
+
+
+```{r}
+south_north_band <- c(105, 109)
+library(patchwork)
+
+cape %>% 
+  .[south_north %between% south_nort_band, .(mean_cape = mean(value, na.rm = TRUE)), by = .(date, west_east, exp)] %>%
+  # dcast(date + west_east ~ exp, value.var = "mean_cape") %>% 
+  .[coord[south_north %~% mean(south_north_band)], on = .NATURAL] %>% 
+  ggplot(aes(lon, date)) +
+  geom_contour_fill(aes(z = mean_cape), breaks = seq(500, 4000, 500), na.fill = 0) +
+  geom_contour2(data = function(d) dcast(d, date + lon ~ exp, value.var = "mean_cape")[, dif := E3 - E4],
+    aes(z = dif), breaks = seq(500, 4000, 500), na.fill = 0) +
+  scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
+                       breaks = seq(500, 4000, 500),
+                       guide = guide_colorstrip(barwidth = 15,
+                                                barheight = 0.8)) +
+  labs(title = "MCAPE") +
+  scale_x_longitude(ticks = 2.5, expand = c(0,0)) +
+  scale_y_datetime("Time", expand = c(0,0)) +
+  facet_grid(~exp, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV"))) +
+  theme_minimal() +
+  theme(legend.position = "bottom", panel.ontop = TRUE) 
+```
+
+
+```{r}
+
+
+interpol <- function(x, y, z, ...) {
+  IL <- interp::interp(x, y, z, ...)
+  CJ(y = IL$y, x = IL$x)[, z := c(IL$z)] 
 }
 
-invisible(capture.output(cape <- file_test[, capear(P, T, QVAPOR), by = .(south_north, west_east)]))
-
-
-cape[] %>% 
-  ggplot(aes(west_east, south_north)) +
-  geom_point(aes(color = cape)) +
-  scale_color_viridis_c() +
-  coord_equal()
-
-```
-
-
-```{r}
-library(patchwork)
-cape <- fread("analisis/cape_cin_ana_E3.csv") %>% 
-  .[, date := ymd_hms(date)]
-
-cape[, .(mean_cape = mean(cape)), by = .(west_east, date)] %>% 
-  ggplot(aes(west_east, date)) +
-  geom_contour_fill(aes(z = mean_cape), breaks = seq(500, 4000, 500)) +
+cape[date %in% ymd_h(c("2018-11-21 21", 
+                       "2018-11-22 00",
+                       "2018-11-22 06", 
+                       "2018-11-22 03"))] %>% 
+  .[coord, on = .NATURAL] %>% 
+  .[!is.finite(value), value := 0] %>% 
+  .[, interpol(lon, lat, value, nx = 50, ny = 50), by = .(date, exp)] %>% 
+  setnames(c("x", "y", "z"), c("lon", "lat", "value")) %>%
+  na.omit() %>% 
+  .[, date := factor(date)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_contour_fill(aes(z = round(value, 6)), na.fill = 0) +
+  # geom_contour2(data = function(d) dcast(d, lat + lon + date ~ exp, value.var = "value")[, dif := E3 - E4],
+  #   aes(z = dif), bins = 5)+
+  geom_mapa() +
   scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
-                       breaks = seq(500, 4000, 500),
-                       guide = guide_colorstrip(barwidth = 15,
-                                                barheight = 0.8)) +
-  labs(title = "CONV Only",
-       subtitle = "CAPE") +
-  coord_cartesian(xlim = c(0, 200)) +
-  scale_x_continuous(expand = c(0,0)) +
-  scale_y_datetime(expand = c(0,0)) +
-  theme_minimal() +
-  theme(legend.position = "bottom") +
-  
-cape[, .(mean_cin = mean(cin)), by = .(west_east, date)] %>% 
-  ggplot(aes(west_east, date)) +
-  geom_contour_fill(aes(z = mean_cin), breaks = seq(-500, -10, 50)) +
-  scale_fill_distiller(name = NULL, palette = "YlGnBu", direction = -1,
-                       breaks = seq(-500, -10, 50),
-                       guide = guide_colorstrip(barwidth = 15,
-                                                barheight = 0.8)) +
-  labs(subtitle = "CIN") +
-  coord_cartesian(xlim = c(0, 200)) +
-  scale_x_continuous(expand = c(0,0)) +
-  scale_y_datetime(expand = c(0,0)) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-```
-
-```{r}
-library(patchwork)
-cape <- fread("analisis/cape_cin_ana_E4.csv") %>% 
-  .[, date := ymd_hms(date)]
-
-cape[, .(mean_cape = mean(cape)), by = .(west_east, date)] %>% 
-  ggplot(aes(west_east, date)) +
-  geom_contour_fill(aes(z = mean_cape), breaks = seq(500, 4000, 500)) +
-  scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
-                       breaks = seq(500, 4000, 500),
-                       guide = guide_colorstrip(barwidth = 15,
-                                                barheight = 0.8)) +
-  labs(title = "CONV Only",
-       subtitle = "CAPE") +
-  coord_cartesian(xlim = c(0, 200)) +
-  scale_x_continuous(expand = c(0,0)) +
-  scale_y_datetime(expand = c(0,0)) +
-  theme_minimal() +
-  theme(legend.position = "bottom") +
-  
-cape[, .(mean_cin = mean(cin)), by = .(west_east, date)] %>% 
-  ggplot(aes(west_east, date)) +
-  geom_contour_fill(aes(z = mean_cin), breaks = seq(-500, -10, 50)) +
-  scale_fill_distiller(name = NULL, palette = "YlGnBu", direction = -1,
-                       breaks = seq(-500, -10, 50),
-                       guide = guide_colorstrip(barwidth = 15,
-                                                barheight = 0.8)) +
-  labs(subtitle = "CIN") +
-  coord_cartesian(xlim = c(0, 200)) +
-  scale_x_continuous(expand = c(0,0)) +
-  scale_y_datetime(expand = c(0,0)) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-```
-
-```{r}
-E3 <- fread("analisis/cape_cin_ana_E3.csv") %>% # Experimento bueno
-  .[, date := ymd_hms(date)] %>% 
-  .[, .(cape = mean(cape),
-        cin = mean(cin)), by = .(west_east, date)]
-
-E4 <- fread("analisis/cape_cin_ana_E4.csv") %>% # Experimento malo
-  .[, date := ymd_hms(date)] %>% 
-  .[, .(cape = mean(cape),
-        cin = mean(cin)), by = .(west_east, date)]
-
-E4[E3, on = c("west_east", "date")] %>% 
-  .[, `:=`(diff_cape = i.cape - cape,
-           diff_cin = i.cin - cin)] %>% 
-  ggplot(aes(west_east, date)) +
-  geom_contour_fill(aes(z = diff_cape)) +
-  # geom_contour2(aes(z = diff_cin)) +
-  scale_fill_divergent(name = "Difference") +
-  labs(title = "CAPE difference",
-       subtitle = "E1 - E3") +
-  scale_x_continuous(expand = c(0,0)) +
-  scale_y_datetime(expand = c(0,0)) +
-  theme_minimal()
-    
-
-```
-
-```{r}
-E3 <- fread("analisis/cape_cin_espacial_ana_E3.csv") %>% 
-  .[, `:=`(date = ymd_hms(date),
-           exp = "E3")]
-E4 <- fread("analisis/cape_cin_espacial_ana_E4.csv") %>% 
-  .[, `:=`(date = ymd_hms(date),
-           exp = "E4")]
-rbind(E3, E4) %>% 
-  ggplot(aes(west_east, south_north)) +
-  geom_contour_fill(aes(z = cape), breaks = seq(700, 5000, 500)) +
-  scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
-                       breaks = seq(500, 5000, 500),
+                       # breaks = seq(500, 5000, 500),
                        guide = guide_colorstrip(barwidth = 20,
                                                 barheight = 0.8)) +
-  facet_grid(exp ~ factor(date)) +
+  facet_grid(exp ~ date) +
+  coord_sf(xlim = range(coords$lon), ylim = range(coords$lat)) +
   theme_minimal() +
-  theme(legend.position = "bottom")
-
+  theme(legend.position = "bottom", panel.ontop = TRUE) 
 ```
+
 
 
 ## Temperatura y humedad
@@ -229,16 +162,16 @@ perfil_E4[perfil_E3, on = c("bottom_top", "date")] %>%
 
 ```{r}
 fcsts <- expand_grid(fcsts = c("20181121210000", "20181122000000", "20181122030000", "20181122060000"),
-                        exp = c("E3", "E4"))
+                     exp = c("E3", "E4"))
 
 temp_spd <- lapply(seq_len(nrow(fcsts)), function(f) {
   
   tmp <- ReadNetCDF(paste0("analisis/u_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(u = "uvmet")) %>% 
-  .[, v := ReadNetCDF(paste0("analisis/v_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(v = "uvmet"), out = "vector")] %>% 
-  .[, t := ReadNetCDF(paste0("analisis/t_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"),  vars = c(t = "temp"), out = "vector")] %>% 
-  .[, date :=  ymd_hms(fcsts[f, 1])] %>% 
-  .[, exp := fcsts[f, 2]] %>%  
-  .[]
+    .[, v := ReadNetCDF(paste0("analisis/v_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(v = "uvmet"), out = "vector")] %>% 
+    .[, t := ReadNetCDF(paste0("analisis/t_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"),  vars = c(t = "temp"), out = "vector")] %>% 
+    .[, date :=  ymd_hms(fcsts[f, 1])] %>% 
+    .[, exp := fcsts[f, 2]] %>%  
+    .[]
 }) %>% 
   rbindlist()
 
@@ -265,9 +198,9 @@ temp_spd[bottom_top == 7] %>%
 q <- lapply(seq_len(nrow(fcsts)), function(f) {
   
   tmp <- ReadNetCDF(paste0("analisis/q_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(q = "QVAPOR")) %>% 
-  .[, date :=  ymd_hms(fcsts[f, 1])] %>% 
-  .[, exp := fcsts[f, 2]] %>%  
-  .[]
+    .[, date :=  ymd_hms(fcsts[f, 1])] %>% 
+    .[, exp := fcsts[f, 2]] %>%  
+    .[]
 }) %>% 
   rbindlist()
 
@@ -284,4 +217,3 @@ q[bottom_top <= 7, .(q = mean(q)), by = .(south_north, west_east, date, exp)] %>
   metR:::theme_field()
 
 ```
-
