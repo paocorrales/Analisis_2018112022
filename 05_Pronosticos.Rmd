@@ -12,13 +12,17 @@ library(tidyverse)
 library(lubridate)
 library(data.table)
 library(metR)
-library(aiRthermo)
 library(reticulate)
 
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
 
-coord <- ReadNetCDF("E3/ANA/20181122060000/analysis.ensmean", vars = c(lon = "XLONG", lat = "XLAT")) %>% 
-  .[, Time := NULL]
+coord <- ReadNetCDF("analisis/mucape/mcape_ana_E3_20181120180000.nc", 
+                    vars = c(lon = "XLONG")) %>% 
+  .[, lat := ReadNetCDF(files[1], vars = c(lat = "XLAT"))$lat]
+
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
 
 exp <- c(E3 = "CONV+AUT",
          E4 = "CONV")
@@ -98,7 +102,7 @@ pp_imerg_acum %>%
                       # limits = c(0, 350),
                       oob = scales::squish,
                       breaks = seq(0, 360, 50)) +
-  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.2) +
+  geom_sf(data = map, inherit.aes = FALSE, color = "black", fill = NA, size = 0.2) +
   coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
   theme_minimal() +
   labs(title = "Cumulado entre las 06 del 22 y las 12 del 23")
@@ -122,8 +126,8 @@ pp_inter %>%
                         guide = guide_colorstrip(inside = TRUE,
                                                  barwidth = 20,
                                                 barheight = 0.8)) +
-  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.5) +
-  coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
+  geom_mapa() +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   facet_grid(exp ~ init_date, labeller = labeller(exp = exp,
                                                   init_date = init_fcst)) +
   labs(title = "Accumulated precipitation",
@@ -186,8 +190,8 @@ pp_hov_acum[coord[south_north == 120, .(west_east, lon)], on = c("west_east")] %
                                                 barheight = 0.8)) +
   facet_grid(exp ~ fcst, labeller = labeller(exp = exp,
                                              fcst = init_fcst)) +
-  scale_x_longitude(breaks = seq(-75, -55, 5)) +
-  scale_y_datetime(date_breaks = "6 hours", date_labels = "%m/%d %HZ") +
+  scale_x_longitude(breaks = seq(-75, -55, 5), expand = c(0,0)) +
+  scale_y_datetime(date_breaks = "6 hours", date_labels = "%b-%d %HZ", expand = c(0,0)) +
   labs(title = "Hovmöller of accumulated precipitation",
     subtitle = "34ºS to 30ºS latitud",
     x = "Longitud",

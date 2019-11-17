@@ -12,7 +12,6 @@ library(tidyverse)
 library(lubridate)
 library(data.table)
 library(metR)
-library(aiRthermo)
 library(reticulate)
 
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
@@ -40,10 +39,10 @@ Quermeos comparar los experimentos E3 que asimila el prepbufr nivel 3 (oficiales
 ## CAPE y CIN
 
 ```{r read, include=FALSE}
-files <- list.files("mucape", full.names = TRUE)
+files <- list.files("analisis/mucape", full.names = TRUE)
 
 cape <- lapply(files, function(file) {
-  details <- unglue::unglue(file, "mucape/mcape_ana_{exp}_{date}.nc")[[1]]
+  details <- unglue::unglue(file, "analisis/mucape/mcape_ana_{exp}_{date}.nc")[[1]]
   
   ReadNetCDF(file, vars = c(value = "cape_2d")) %>% 
     .[, `:=`(exp = details$exp, 
@@ -62,10 +61,9 @@ coord <- ReadNetCDF(files[1], vars = c(lon = "XLONG")) %>%
 
 ```{r}
 south_north_band <- c(105, 109)
-library(patchwork)
 
 cape %>% 
-  .[south_north %between% south_nort_band, .(mean_cape = mean(value, na.rm = TRUE)), by = .(date, west_east, exp)] %>%
+  .[south_north %between% south_north_band, .(mean_cape = mean(value, na.rm = TRUE)), by = .(date, west_east, exp)] %>%
   # dcast(date + west_east ~ exp, value.var = "mean_cape") %>% 
   .[coord[south_north %~% mean(south_north_band)], on = .NATURAL] %>% 
   ggplot(aes(lon, date)) +
@@ -74,19 +72,23 @@ cape %>%
     aes(z = dif), breaks = seq(500, 4000, 500), na.fill = 0) +
   scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
                        breaks = seq(500, 4000, 500),
-                       guide = guide_colorstrip(barwidth = 15,
+                       guide = guide_colorstrip(barwidth = 40,
                                                 barheight = 0.8)) +
-  labs(title = "MCAPE") +
+  labs(title = "MCAPE",
+       subtitle = "34ºS to 30ºS latitud") +
   scale_x_longitude(ticks = 2.5, expand = c(0,0)) +
-  scale_y_datetime("Time", expand = c(0,0)) +
+  scale_y_datetime("Time", date_labels = "%b-%d", expand = c(0,0)) +
   facet_grid(~exp, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV"))) +
-  theme_minimal() +
-  theme(legend.position = "bottom", panel.ontop = TRUE) 
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom", 
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3)) 
+
+ggsave("fig/cape_hov.png", dpi = 150, width = unit(20, "cm"), height = unit(10, "cm"))
 ```
 
 
 ```{r}
-
 
 interpol <- function(x, y, z, ...) {
   IL <- interp::interp(x, y, z, ...)
@@ -110,12 +112,21 @@ cape[date %in% ymd_h(c("2018-11-21 21",
   geom_mapa() +
   scale_fill_distiller(name = NULL, palette = "YlOrRd", direction = 1, 
                        # breaks = seq(500, 5000, 500),
-                       guide = guide_colorstrip(barwidth = 20,
+                       guide = guide_colorstrip(barwidth = 30,
                                                 barheight = 0.8)) +
-  facet_grid(exp ~ date) +
-  coord_sf(xlim = range(coords$lon), ylim = range(coords$lat)) +
-  theme_minimal() +
-  theme(legend.position = "bottom", panel.ontop = TRUE) 
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV"))) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  labs(title = "MCAPE",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom", 
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3)) 
+
+ggsave("fig/cape_esp.png", dpi = 150, width = unit(20, "cm"), height = unit(15, "cm"))
 ```
 
 
@@ -128,34 +139,63 @@ Perfiles de temperatura y humedad promediados en todo el dominio
 perfil_E3 <- fread("analisis/perfil_T_Q_ana_E3.csv") %>% 
   .[, date := ymd_hms(date)] 
 
+perfil_lev_E3 <- fread("analisis/perfil_lev_T_Q_ana_E3.csv") %>% 
+  .[, date := ymd_hms(date)] 
+
 perfil_E4 <- fread("analisis/perfil_T_Q_ana_E4.csv") %>% 
   .[, date := ymd_hms(date)]
 
-perfil_E4[perfil_E3, on = c("bottom_top", "date")] %>%
-  .[] %>% 
-  .[, `:=`(diff_T = i.T - T,
-           diff_Q = i.QVAPOR - QVAPOR)] %>% 
-  ggplot(aes(date, bottom_top)) +
-  geom_contour_fill(aes(z = diff_T)) +
-  scale_fill_divergent(name = "Difference") +
-  labs(title = "Temperature difference",
-       subtitle = "E1 - E2") +
-  scale_y_continuous(expand = c(0,0)) +
-  scale_x_datetime(expand = c(0,0)) +
-  theme_minimal()
+perfil_lev_E4 <- fread("analisis/perfil_lev_T_Q_ana_E4.csv") %>% 
+  .[, date := ymd_hms(date)] 
 
-perfil_E4[perfil_E3, on = c("bottom_top", "date")] %>%
+perfil_lev_E4[perfil_lev_E3, on = c("lev", "date")] %>%
   .[] %>% 
   .[, `:=`(diff_T = i.T - T,
            diff_Q = i.QVAPOR - QVAPOR)] %>% 
-  ggplot(aes(date, bottom_top)) +
-  geom_contour_fill(aes(z = diff_Q)) +
-  scale_fill_divergent(name = "Difference") +
-  labs(title = "Humidity difference",
-       subtitle = "E1 - E2") +
-  scale_y_continuous(expand = c(0,0)) +
-  scale_x_datetime(expand = c(0,0)) +
-  theme_minimal()
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = diff_T), breaks = seq(-1, 1, 0.2)) +
+  scale_fill_divergent(name = NULL,
+                       breaks = seq(-1, 1, 0.2),
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 35,
+                                                barheight = 0.8)) +
+  labs(title = "Temperature difference (K)",
+       subtitle = "CONV+AUT - CONV",
+       x = "Time",
+       y = "Pressure level") +
+  scale_y_level(name = "Pressure level") +
+  scale_x_datetime(expand = c(0,0), date_labels = "%b-%d %H:%M", date_breaks = "12 hours") +
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+
+ggsave("fig/temperature_diff.png", dpi = 150, width = unit(15, "cm"), height = unit(10, "cm"))
+
+perfil_lev_E4[perfil_lev_E3, on = c("lev", "date")] %>%
+  .[] %>% 
+  .[, `:=`(diff_T = i.T - T,
+           diff_Q = i.QVAPOR - QVAPOR)] %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = diff_Q*1000), breaks = seq(-0.0004, 0.0016, 0.0002)*1000) +
+  scale_fill_divergent(name = NULL,
+                       breaks = seq(-0.0004, 0.0016, 0.0002)*1000,
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 35,
+                                                barheight = 0.8)) +
+
+  scale_y_level(name = "Pressure level") +
+  scale_x_datetime(expand = c(0,0), date_labels = "%b-%d %H:%M", date_breaks = "12 hours") +
+  labs(title = "Humidity difference (g/Kg)",
+       subtitle = "CONV+AUT - CONV",
+       y = "Pressure level",
+       x = "Time") +
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+
+ggsave("fig/humidity_diff.png", dpi = 150, width = unit(15, "cm"), height = unit(10, "cm"))
 ```
 
 ## Circulación
@@ -175,19 +215,34 @@ temp_spd <- lapply(seq_len(nrow(fcsts)), function(f) {
 }) %>% 
   rbindlist()
 
-temp_spd[bottom_top == 7] %>% 
+temp_spd[bottom_top <= 7, .(t = mean(t), u = u[bottom_top == 1], v = v[bottom_top == 1]), 
+         by = .(south_north, west_east, date, exp)] %>% 
   .[coord, on = c("south_north", "west_east")] %>% 
+  # .[, c("u", "v") := temp_spd[bottom_top == 1, .(u, v)]] %>%
   .[, date := factor(date)] %>% 
   ggplot(aes(lon, lat)) +
   geom_point(aes(color = t - 273)) +
-  scale_color_distiller("Temperature", palette = "RdBu", direction = -1) +
-  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.2) +
-  coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
-  geom_vector(aes(dx = u, dy = v), data = function(x) x[is.cross(lon, lat, 4)]) +
+  scale_color_divergent(name = NULL, 
+                        breaks = seq(-10, 30, 5),
+                        guide = guide_colorstrip(inside = FALSE,
+                                                barwidth = 30,
+                                                barheight = 0.8)) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, color = "black", size = 0.2) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  geom_vector(aes(dx = u, dy = v), data = function(x) x[is.cross(south_north, west_east, 4)]) +
   scale_mag() +
-  facet_grid(exp ~ date) +
-  theme_minimal() +
-  metR:::theme_field()
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV"))) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(title = "Low level temperature",
+       x = "Longituted",
+       y = "Latitude") +
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+
+ggsave("fig/campo_temperatura.png", dpi = 150, width = unit(30, "cm"), height = unit(15, "cm"))
 ```
 
 ## Humedad en niveles bajos
@@ -208,12 +263,24 @@ q[bottom_top <= 7, .(q = mean(q)), by = .(south_north, west_east, date, exp)] %>
   .[coord, on = c("south_north", "west_east")] %>% 
   .[, date := factor(date)] %>% 
   ggplot(aes(lon, lat)) +
-  geom_point(aes(color = q)) +
-  scale_color_distiller(palette = "BrBG", direction = 1) +
-  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.2) +
-  coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
-  facet_grid(exp ~ date) +
-  theme_minimal() +
-  metR:::theme_field()
-
+  geom_point(aes(color = q*1000)) +
+  scale_color_distiller(name = NULL,
+                        palette = "BrBG", direction = 1,
+                        breaks = seq(0, 0.02, 0.002)*1000,
+                        guide = guide_colorstrip(inside = FALSE,
+                                                barwidth = 40,
+                                                barheight = 0.8)) +
+  geom_sf(data = map, inherit.aes = FALSE, color = "black", fill = NA, size = 0.2) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV"))) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(title = "Low level humidity (g/Kg)",
+       x = "Longituted",
+       y = "Latitude") +
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+ggsave("fig/campo_humedad.png", dpi = 150, width = unit(30, "cm"), height = unit(15, "cm"))
 ```
