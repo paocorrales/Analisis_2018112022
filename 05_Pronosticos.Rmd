@@ -16,9 +16,8 @@ library(reticulate)
 
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
 
-coord <- ReadNetCDF("analisis/mucape/mcape_ana_E3_20181120180000.nc", 
-                    vars = c(lon = "XLONG")) %>% 
-  .[, lat := ReadNetCDF(files[1], vars = c(lat = "XLAT"))$lat]
+coord <- ReadNetCDF("analisis/mucape/mcape_ana_E3_20181120180000.nc", vars = c(lon = "XLONG")) %>% 
+  .[, lat := ReadNetCDF("analisis/mucape/mcape_ana_E3_20181120180000.nc", vars = c(lat = "XLAT"))$lat]
 
 geom_mapa <- function() {
   geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
@@ -135,7 +134,8 @@ pp_inter %>%
        x = "Longitude",
        y = "Latitude") +
   theme_minimal(base_size = 26) +
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom",
+        panel.grid = element_line(linetype = 3))
 
 ggsave("fig/pp_acum.png", dpi = 200, width = unit(15, "cm"), height = unit(20, "cm"))
 ```
@@ -191,16 +191,17 @@ pp_hov_acum[coord[south_north == 120, .(west_east, lon)], on = c("west_east")] %
   facet_grid(exp ~ fcst, labeller = labeller(exp = exp,
                                              fcst = init_fcst)) +
   scale_x_longitude(breaks = seq(-75, -55, 5), expand = c(0,0)) +
-  scale_y_datetime(date_breaks = "6 hours", date_labels = "%b-%d %HZ", expand = c(0,0)) +
+  scale_y_datetime(date_breaks = "6 hours", date_labels = "%b-%d %HZ") +
   labs(title = "Hovmöller of accumulated precipitation",
     subtitle = "34ºS to 30ºS latitud",
     x = "Longitud",
     y = "Time") +
   theme_minimal(base_size = 26) +
   theme(legend.position = "bottom",
-        panel.ontop = TRUE)
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
 
-ggsave("fig/pp_hov.png", dpi = 200, width = unit(20, "cm"), height = unit(20, "cm"))
+ggsave("fig/pp_hov.png", dpi = 200, width = unit(15, "cm"), height = unit(15, "cm"))
 ```
 
 ```{r}
