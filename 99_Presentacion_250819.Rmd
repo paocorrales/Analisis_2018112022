@@ -13,6 +13,7 @@ library(data.table)
 library(dplyr)
 library(lubridate)
 library(patchwork)
+library(stringr)
 
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
 proj <- paste0("+proj=lcc +lat_1=-30.966 +lat_2=-30.966 +lat_0=-30.966 +lon_0=-63.567",
@@ -106,5 +107,38 @@ no_oficiales <- unique(obs, by = c("stationID")) %>%
   .[type != 290] %>% 
   .[!str_detect(stationID, "SMN")] %>%
   .[!stationID %in% oficiales & type != 290, stationID]
+```
+
+
+# Dominio y obs combinados
+
+```{r}
+dominio <- ReadNetCDF("E3/ANA/20181122060000/analysis.ensmean", vars = c("XLAT", "XLONG")) %>% 
+  setnames(c("XLAT", "XLONG"), c("lat", "lon"))
+
+square <- dominio %>% 
+  copy() %>% 
+  .[, square1 := west_east %in% range(west_east) , by = .(south_north)] %>% 
+  .[, square2 := south_north %in% range(south_north) , by = .(west_east)] %>% 
+  .[square1 | square2] 
+
+unique(obs, by = c("stationID")) %>% 
+  .[type != 290] %>% 
+  .[!str_detect(stationID, "SMN")] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_sf(data = map, fill = NA, color = "black", inherit.aes = FALSE, , size = 0.5) +
+  geom_point(alpha = 0.8, size = 3,
+             aes(color = stationID %in% oficiales)) +
+  scale_color_manual(name =  NULL, values = c("TRUE" = "#FD8002", "FALSE" = "#367DB7"),
+                     breaks = c("FALSE", "TRUE"),
+                     labels = c("Non-official (N = 820)","Official (N = 327)"))+
+  geom_point(data = square, aes(lon, lat), size = 1) +
+  coord_sf(ylim = c(-42, -19), xlim = c(-76, -51)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Longitude", y = "Latitude") +
+  theme_minimal(base_size = 26) + 
+  theme(legend.position = "bottom")
+ggsave("fig/obs_dominio.png", dpi = 150, width = unit(10, "cm"), height = unit(13, "cm"))
 ```
 
