@@ -151,3 +151,39 @@ rbind(dbz, dbz_E4) %>%
   theme_minimal()
 ```
 
+## Observaciones
+
+Vamos a reconocer que hay un elefante en la sala y que algo en el sistema de asimilación no está funcionando como debería. Vamos a analizar las observaciones asimiladas por cada experimento.
+
+```{r echo=FALSE}
+files <- list.files("analisis/diagfiles/", recursive = TRUE, full.names = TRUE, pattern = "asim_conv")
+
+obs <- purrr::map(files, function(f) { 
+  diag <- fread(f) %>% 
+    .[, exp := basename(dirname(f))] %>% 
+    .[, date := ymd_hms(stringr::str_extract(f, "\\d{14}"))] %>% 
+    .[]
+  }) %>% 
+  rbindlist() %>% 
+  .[, c("V2", "V4") := NULL]
+
+colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "date")
+
+obs[, .N, by = .(exp, var, usage.flag)] %>% 
+  dcast(exp + usage.flag ~ var, value.var = "N") %>% 
+  knitr::kable()
+```
+
+```{r}
+obs[, .N, by = .(var, date, exp, usage.flag)] %>% 
+  ggplot(aes(date, N)) +
+  geom_line(aes(color = exp, linetype = factor(usage.flag))) +
+  scale_linetype_manual(values = c("-1" = 2, "1" = 1)) +
+  facet_wrap(~var, scales = "free") +
+  labs(linetype = "Uso", 
+       color = "experimento") +
+  theme_minimal()
+```
+
+
+
