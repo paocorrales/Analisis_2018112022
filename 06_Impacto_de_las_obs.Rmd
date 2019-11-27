@@ -174,16 +174,57 @@ obs[, .N, by = .(exp, var, usage.flag)] %>%
   knitr::kable()
 ```
 
-```{r}
+De esta figura me preocupan varias cosas:
+
+* El pico de observaciones un poco antes de las 00Z del 22 --> Creo que puede tener que ver con que agregué dos veces las mismas observaciones al archivo (si no existe lo crea, si existe agrega lo que le pases sin revisar nada). No sería tan grave.
+* La cantidad de observaciones rechazadas (línea a trazos), sobre todo en la humedad. En la presión no me molesta porque estoy agregando observaciones de estaciones automáticas que no tienen esa observación y entonces cuando mira p rechaza el registro.
+* El cambio en uv justo antes de las 00Z del 22 --> Como que de repente las que se rechazaban se dejan de rechazar. Habré usado la rutina incorrecta para codificar las observaciones de estaciones automáticas A MITAD DE CAMINO?
+
+
+
+```{r echo=FALSE}
 obs[, .N, by = .(var, date, exp, usage.flag)] %>% 
   ggplot(aes(date, N)) +
   geom_line(aes(color = exp, linetype = factor(usage.flag))) +
   scale_linetype_manual(values = c("-1" = 2, "1" = 1)) +
   facet_wrap(~var, scales = "free") +
-  labs(linetype = "Uso", 
+  labs(title = "Cantidad de observaciones asimiladas y rechazadas según variable",
+       linetype = "Uso", 
        color = "experimento") +
+  theme_minimal()
+```
+Respecto del segundo punto: Todas las observaciones tipo 181 de humedad son rechazadas. Resulta que me olvide de sacar el -1 en el archivo *convinfo*. Parece que hice lo mismo para uv (tipo 287).
+
+```{r echo=FALSE}
+obs[var == "q", .N, by = .(var, type, date, exp, usage.flag)] %>% 
+  ggplot(aes(date, N)) +
+  geom_line(aes(color = factor(type))) +
+  facet_wrap(usage.flag ~ exp, scales = "free") +
+  labs(title = "Observaciones de viento",
+       linetype = "Uso", 
+       color = "type") +
+  theme_minimal()
+
+obs[var == "uv", .N, by = .(var, type, date, exp, usage.flag)] %>% 
+  ggplot(aes(date, N)) +
+  geom_line(aes(color = factor(type))) +
+  facet_wrap(usage.flag ~ exp, scales = "free") +
+  labs(title = "Observaciones de humedad",
+       linetype = "Uso", 
+       color = "type") +
   theme_minimal()
 ```
 
 
+
+
+```{r echo=FALSE}
+obs[, .N, by = .(var, type, date, exp, usage.flag)] %>% 
+  ggplot(aes(date, factor(type))) +
+  geom_point(aes(size = N, color = var)) +
+  facet_grid(usage.flag~exp) +
+  labs(title = "Uso y rechazo de observaciones en cada experimento",
+       y = "Tipo de observación") +
+  theme_minimal()
+```
 
