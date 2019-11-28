@@ -200,7 +200,7 @@ obs[var == "q", .N, by = .(var, type, date, exp, usage.flag)] %>%
   ggplot(aes(date, N)) +
   geom_line(aes(color = factor(type))) +
   facet_wrap(usage.flag ~ exp, scales = "free") +
-  labs(title = "Observaciones de viento",
+  labs(title = "Observaciones de humedad",
        linetype = "Uso", 
        color = "type") +
   theme_minimal()
@@ -209,7 +209,7 @@ obs[var == "uv", .N, by = .(var, type, date, exp, usage.flag)] %>%
   ggplot(aes(date, N)) +
   geom_line(aes(color = factor(type))) +
   facet_wrap(usage.flag ~ exp, scales = "free") +
-  labs(title = "Observaciones de humedad",
+  labs(title = "Observaciones de viento",
        linetype = "Uso", 
        color = "type") +
   theme_minimal()
@@ -219,12 +219,7 @@ obs[var == "uv", .N, by = .(var, type, date, exp, usage.flag)] %>%
 
 
 ```{r echo=FALSE}
-obs[, .N, by = .(var, type, date, exp, usage.flag)] %>% 
-  ggplot(aes(date, factor(type))) +
-  geom_point(aes(size = N, color = var)) +
-  facet_grid(usage.flag~exp) +
-  labs(title = "Uso y rechazo de observaciones en cada experimento",
-       y = "Tipo de observación") +
-  theme_minimal()
+obs[var == "q"] %>% 
+  .[]
 ```
 
