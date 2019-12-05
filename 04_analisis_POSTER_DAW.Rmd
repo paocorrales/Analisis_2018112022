@@ -78,13 +78,13 @@ cape %>%
        subtitle = "at 32ºS") +
   scale_x_longitude(ticks = 2.5, expand = c(0,0)) +
   scale_y_datetime("Time", date_labels = "%b-%d", expand = c(0,0)) +
-  facet_wrap(~exp, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV")), ncol = 1) +
+  facet_wrap(~exp, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV", E5 = "CONV+AUT OK")), ncol = 1) +
   theme_minimal(base_size = 26) +
   theme(legend.position = "bottom", 
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3)) 
 
-ggsave("fig/cape_hov.png", dpi = 150, width = unit(10, "cm"), height = unit(18, "cm"))
+ggsave("fig/cape_hov.png", dpi = 150, width = unit(10, "cm"), height = unit(27, "cm"))
 ```
 
 
@@ -115,7 +115,7 @@ cape[date %in% ymd_h(c("2018-11-22 00",
                                                 barheight = 0.8)) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
-  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV"))) +
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV", E5 = "CONV+AUT OK"))) +
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   labs(title = "MCAPE",
        x = "Longitude",
@@ -125,7 +125,7 @@ cape[date %in% ymd_h(c("2018-11-22 00",
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3)) 
 
-ggsave("fig/cape_esp.png", dpi = 150, width = unit(15, "cm"), height = unit(15, "cm"))
+ggsave("fig/cape_esp.png", dpi = 150, width = unit(15, "cm"), height = unit(22, "cm"))
 ```
 
 
@@ -147,7 +147,13 @@ perfil_E4 <- fread("analisis/perfil_T_Q_ana_E4.csv") %>%
 perfil_lev_E4 <- fread("analisis/perfil_lev_T_Q_ana_E4.csv") %>% 
   .[, date := ymd_hms(date)] 
 
-perfil_lev_E4[perfil_lev_E3, on = c("lev", "date")] %>%
+perfil_E5 <- fread("analisis/perfil_T_Q_ana_E5.csv") %>% 
+  .[, date := ymd_hms(date)]
+
+perfil_lev_E5 <- fread("analisis/perfil_lev_T_Q_ana_E5.csv") %>% 
+  .[, date := ymd_hms(date)] 
+
+perfil_lev_E4[perfil_lev_E5, on = c("lev", "date")] %>%
   .[] %>% 
   .[, `:=`(diff_T = i.T - T,
            diff_Q = i.QVAPOR - QVAPOR)] %>% 
@@ -159,7 +165,7 @@ perfil_lev_E4[perfil_lev_E3, on = c("lev", "date")] %>%
                                                 barwidth = 35,
                                                 barheight = 0.8)) +
   labs(title = "Temperature difference (K)",
-       subtitle = "CONV+AUT - CONV",
+       subtitle = "CONV+AUT OK - CONV",
        x = "Time",
        y = "Pressure level") +
   scale_y_level(name = "Pressure level", breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
@@ -171,7 +177,7 @@ perfil_lev_E4[perfil_lev_E3, on = c("lev", "date")] %>%
 
 ggsave("fig/temperature_diff.png", dpi = 150, width = unit(12, "cm"), height = unit(10, "cm"))
 
-perfil_lev_E4[perfil_lev_E3, on = c("lev", "date")] %>%
+perfil_lev_E4[perfil_lev_E5, on = c("lev", "date")] %>%
   .[] %>% 
   .[, `:=`(diff_T = i.T - T,
            diff_Q = i.QVAPOR - QVAPOR)] %>% 
@@ -201,7 +207,7 @@ ggsave("fig/humidity_diff.png", dpi = 150, width = unit(12, "cm"), height = unit
 
 ```{r}
 fcsts <- expand_grid(fcsts = c("20181121210000", "20181122000000", "20181122030000", "20181122060000"),
-                     exp = c("E3", "E4"))
+                     exp = c("E3", "E4", "E5"))
 
 temp_spd <- lapply(seq_len(nrow(fcsts)), function(f) {
   
@@ -222,7 +228,8 @@ mean_temp_spd <- temp_spd[bottom_top <= 7, .(t = mean(t), u = u[bottom_top == 1]
 diff_temp_spd <- copy(mean_temp_spd) %>% 
   melt(id.vars = c("lon", "lat", "date", "exp"), measure.vars = c("t", "u", "v")) %>% 
   dcast(lon + lat + date + variable ~ exp, value.var = "value") %>% 
-  .[, diff := E3 - E4]
+  .[, diff_old := E3 - E4] %>% 
+  .[, diff_new := E5 - E4]
 ```
 
 
@@ -243,7 +250,7 @@ mean_temp_spd %>%
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   geom_vector(aes(dx = u, dy = v), data = function(x) x[is.cross(south_north, west_east, 4)]) +
   scale_mag() +
-  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV"))) +
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV", E5 = "CONV+AUT OK"))) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   labs(title = "Low level temperature",
@@ -254,11 +261,11 @@ mean_temp_spd %>%
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3))
 
-ggsave("fig/campo_temperatura.png", dpi = 150, width = unit(30, "cm"), height = unit(15, "cm"))
+ggsave("fig/campo_temperatura.png", dpi = 150, width = unit(30, "cm"), height = unit(20, "cm"))
 
 library(patchwork)
 mean_temp_spd %>% 
-  .[exp == "E3" & date %in% c("2018-11-22 00:00:00", "2018-11-22 06:00:00")] %>% 
+  .[exp == "E5" & date %in% c("2018-11-22 00:00:00", "2018-11-22 06:00:00")] %>% 
   .[] %>% 
   ggplot(aes(lon, lat)) +
   geom_point(aes(color = t - 273)) +
@@ -274,7 +281,7 @@ mean_temp_spd %>%
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   geom_vector(aes(dx = u, dy = v), data = function(x) x[is.cross(south_north, west_east, 4)]) +
   scale_mag() +
-  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV"))) +
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV",  E5 = "CONV+AUT OK"))) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   labs(title = "CONV+AUT",
@@ -287,7 +294,7 @@ mean_temp_spd %>%
         strip.text.y = element_blank()) +
 
 diff_temp_spd %>% 
-  dcast(lon + lat + date ~variable, value.var = "diff") %>% 
+  dcast(lon + lat + date ~variable, value.var = "diff_new") %>% 
   .[date %in% c("2018-11-22 00:00:00", "2018-11-22 06:00:00")] %>% 
   .[coord, on = .NATURAL] %>% 
   ggplot(aes(lon, lat)) +
@@ -344,7 +351,7 @@ q[bottom_top <= 7, .(q = mean(q)), by = .(south_north, west_east, date, exp)] %>
                                                 barheight = 0.8)) +
   geom_sf(data = map, inherit.aes = FALSE, color = "black", fill = NA, size = 0.2) +
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
-  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV"))) +
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV", E5 = "CONV+AUT OK"))) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   labs(title = "Low level humidity (g/Kg)",
@@ -355,15 +362,15 @@ q[bottom_top <= 7, .(q = mean(q)), by = .(south_north, west_east, date, exp)] %>
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3))
 
-ggsave("fig/campo_humedad.png", dpi = 150, width = unit(30, "cm"), height = unit(15, "cm"))
-
+ggsave("fig/campo_humedad.png", dpi = 150, width = unit(30, "cm"), height = unit(20, "cm"))
 
 ```
+
 ```{r}
 q[bottom_top <= 7, .(q = mean(q)), by = .(south_north, west_east, date, exp)] %>% 
   .[coord, on = c("south_north", "west_east")] %>% 
   .[, date := factor(date)] %>% 
-  .[exp == "E3" & date %in% c("2018-11-22 00:00:00", "2018-11-22 06:00:00")] %>% 
+  .[exp == "E5" & date %in% c("2018-11-22 00:00:00", "2018-11-22 06:00:00")] %>% 
   ggplot(aes(lon, lat)) +
   geom_point(aes(color = q*1000)) +
   scale_color_distiller(name = NULL,
@@ -390,7 +397,7 @@ q[bottom_top <= 7, .(q = mean(q)), by = .(south_north, west_east, date, exp)] %>
   .[coord, on = c("south_north", "west_east")] %>% 
   .[, date := factor(date)] %>% 
   dcast(lon + lat + date ~ exp, value.var = "q") %>% 
-  .[, diff := E3 - E4] %>% 
+  .[, diff := E5 - E4] %>% 
   .[date %in% c("2018-11-22 00:00:00", "2018-11-22 06:00:00")] %>% 
   ggplot(aes(lon, lat)) +
   geom_point(aes(color = diff*1000)) +
