@@ -15,6 +15,7 @@ capear <- function(p, t, q) {
 }
 
 path <- "/glade/scratch/jruiz/EXP/E4/ANA/2018112*/analysis.ensmean"
+path <- "E3/ANA/20181122060000/analysis.ensmean"
 lat_band <- list(south_north = 105:109)
 
 files <- Sys.glob(path)
