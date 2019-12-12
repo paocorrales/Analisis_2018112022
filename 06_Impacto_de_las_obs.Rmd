@@ -124,7 +124,8 @@ En las tres variables analizadas se observa una zona al sur de Córdoba y Buenos
 ### Reflectividad
 
 ```{r}
-map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+# map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+map <- sf::read_sf("mapa/mapa.shp")
 
 geom_mapa <- function() {
   geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
@@ -156,7 +157,7 @@ rbind(dbz, dbz_E4) %>%
 Vamos a reconocer que hay un elefante en la sala y que algo en el sistema de asimilación no está funcionando como debería. Vamos a analizar las observaciones asimiladas por cada experimento.
 
 ```{r echo=FALSE}
-files <- list.files("analisis/diagfiles/", recursive = TRUE, full.names = TRUE, pattern = "asim_conv")
+files <- list.files("analisis/diagfiles/E5", recursive = TRUE, full.names = TRUE, pattern = "asim_conv")
 
 obs <- purrr::map(files, function(f) { 
   diag <- fread(f) %>% 
@@ -167,7 +168,7 @@ obs <- purrr::map(files, function(f) {
   rbindlist() %>% 
   .[, c("V2", "V4") := NULL]
 
-colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "date")
+colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "date")
 
 obs[, .N, by = .(exp, var, usage.flag)] %>% 
   dcast(exp + usage.flag ~ var, value.var = "N") %>% 
@@ -206,6 +207,16 @@ obs[var == "t", .N, by = .(var, type, date, exp, usage.flag)] %>%
        color = "type") +
   theme_minimal()
 
+obs[var == "q", .N, by = .(var, type, date, exp, usage.flag)] %>% 
+  ggplot(aes(date, N)) +
+  geom_line(aes(color = factor(type))) +
+  geom_point(aes(color = factor(type))) +
+  facet_wrap(usage.flag ~ exp, scales = "free") +
+  labs(title = "Observaciones de humedad",
+       linetype = "Uso", 
+       color = "type") +
+  theme_minimal()
+
 obs[var == "uv", .N, by = .(var, type, date, exp, usage.flag)] %>% 
   ggplot(aes(date, N)) +
   geom_line(aes(color = factor(type))) +
@@ -217,11 +228,80 @@ obs[var == "uv", .N, by = .(var, type, date, exp, usage.flag)] %>%
   theme_minimal()
 ```
 
+### Observaciones 287 no asimiladas, que pasó?
 
-
+Muchas estaciones tienen datos faltantes, no siempre pero en algunos casos llegan a sumar 500 observaciones durante el experimento. Calculando la cantidad de observaciones por ciclo de asimilación da un promedio de 1800, aproximadamente lo que da en el gráfico.  
 
 ```{r echo=FALSE}
-obs[var == "q"] %>% 
-  .[]
+obs[var == "uv" & type == 287 & exp == "E5"] %>% 
+  .[obs.guess < -10000] %>% 
+  .[, .N, by = .(stationID, lon, lat)] %>% 
+  .[] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -50), ylim = c(-42, -20)) +
+  geom_point(aes(color = N)) +
+  labs(title = "Algunas estaciones tienen muchos NAs",
+       subtitle = "Viento",
+       x = "lon") +
+  theme_minimal()
+
+```
+
+### Observaciones de aviones
+
+Los prepbufrs contienen 3 tipos de observaciones provenientes de aviones:
+
+- 130/230: AIREP
+- 131/231: AMDAR
+- 133/233: MDCRS ACARS
+
+De los 3 tipos, 131/231 tiene más observaciones.
+```{r echo=FALSE}
+obs[type %in% c(130, 131, 133, 230, 231, 233) & exp == "E5"] %>% 
+  .[, .N, by = .(type, usage.flag)] %>% 
+  dcast(type~usage.flag)
+```
+
+Por ahora según la configuración de la **errtable** algunas observaciones de humedad no se asimilan (también está así en el archivo **convinfo**). Pero serán tan malas?
+
+| tipo | temp | q | uv |
+|:--:|:---:|:---:|:---:|
+|130| 2.5 | NA | - |
+|131| 1.47 | NA | - |
+|133 |1.47 |1.94 | - |
+|230| - | - | 3.6 |
+|231 | - | - | 3.0 |
+|233 | -  | - | 2.5 |
+
+Veamos que pinta tiene la diferencia entre las observaciones y el guess.
+
+```{r echo=FALSE}
+obs[type %in% c(130, 131, 133)] %>% 
+  .[] %>% 
+  ggplot(aes(obs.guess)) +
+  geom_density() +
+  facet_grid(usage.flag~type, scale = "free_y")
+
+obs[type %in% c(230, 231, 233)] %>% 
+  .[] %>% 
+  ggplot(aes(obs.guess)) +
+  geom_density() +
+  facet_grid(type ~ var)
+```
+
+```{r}
+obs[type %in% c("131", "231") & exp == "E5"] %>% 
+  ggplot(aes(obs.guess, pressure)) +
+  geom_point(alpha = 0.01) +
+  scale_y_level() +
+  facet_grid(type ~ usage.flag)
+```
+
+```{r}
+obs[type == 131 & exp == "E5" & date == "2018-11-22 00:00:00" & usage.flag == 1] 
+  
+  
+
 ```
 
