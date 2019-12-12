@@ -42,8 +42,8 @@ Y acá aparecen cosas raras. PORQUE EL UPDATE DE EXP CONV ES CASI CERO!!! Entre 
 Voy a investigar donde metí la pata esta vez.
 
 ```{r echo=FALSE, warning=FALSE}
-E3_tq <- fread("analisis/perfil_lev_T_Q_ana_E3.csv") %>% 
-  .[fread("analisis/perfil_lev_T_Q_guess_E3.csv"), on = c("lev", "date")] %>% 
+E3_tq <- fread("analisis/perfil_lev_T_Q_ana_E5.csv") %>% 
+  .[fread("analisis/perfil_lev_T_Q_guess_E5.csv"), on = c("lev", "date")] %>% 
   .[, date := ymd_hms(date)] %>% 
   setnames(c("T", "QVAPOR", "i.T", "i.QVAPOR"), c("T_ana", "Q_ana", "T_guess", "Q_guess")) %>% 
   .[, `:=`(T_update = T_ana - T_guess,
@@ -130,7 +130,7 @@ geom_mapa <- function() {
   geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
 }
 
-dbz <- ReadNetCDF("analisis/dbz/maxdbz_ana_E3_20181122060000.nc", vars = c(dbz = "max_dbz", lon = "XLONG", lat = "XLAT")) %>% 
+dbz <- ReadNetCDF("analisis/dbz/maxdbz_ana_E5_20181122060000.nc", vars = c(dbz = "max_dbz", lon = "XLONG", lat = "XLAT")) %>% 
   .[, exp := "CONV+AUT"]
 
 dbz_E4 <- ReadNetCDF("analisis/dbz/maxdbz_ana_E4_20181122060000.nc", vars = c(dbz = "max_dbz", lon = "XLONG", lat = "XLAT")) %>% 
@@ -196,11 +196,12 @@ obs[, .N, by = .(var, date, exp, usage.flag)] %>%
 Respecto del segundo punto: Todas las observaciones tipo 181 de humedad son rechazadas. Resulta que me olvide de sacar el -1 en el archivo *convinfo*. Parece que hice lo mismo para uv (tipo 287).
 
 ```{r echo=FALSE}
-obs[var == "q", .N, by = .(var, type, date, exp, usage.flag)] %>% 
+obs[var == "t", .N, by = .(var, type, date, exp, usage.flag)] %>% 
   ggplot(aes(date, N)) +
   geom_line(aes(color = factor(type))) +
+  geom_point(aes(color = factor(type))) +
   facet_wrap(usage.flag ~ exp, scales = "free") +
-  labs(title = "Observaciones de humedad",
+  labs(title = "Observaciones de temperatura",
        linetype = "Uso", 
        color = "type") +
   theme_minimal()
@@ -208,6 +209,7 @@ obs[var == "q", .N, by = .(var, type, date, exp, usage.flag)] %>%
 obs[var == "uv", .N, by = .(var, type, date, exp, usage.flag)] %>% 
   ggplot(aes(date, N)) +
   geom_line(aes(color = factor(type))) +
+  geom_point(aes(color = factor(type))) +
   facet_wrap(usage.flag ~ exp, scales = "free") +
   labs(title = "Observaciones de viento",
        linetype = "Uso", 
