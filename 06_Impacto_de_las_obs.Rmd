@@ -37,12 +37,13 @@ La diferencia en la humedad absoluta es importante solo en niveles bajos por deb
 
 Otra manera de analizar el impacto que generan las observaciones es calculando el "update" o sea la diferencia entre el análisis y el guess (que en este caso es un pronóstico a una hora).
 
-Y acá aparecen cosas raras. PORQUE EL UPDATE DE EXP CONV ES CASI CERO!!! Entre las 18 de 20/11 y las ~04 del 21/11 hay una diferencia del orden de 1e-4, después de eso es CERO y ocurre tanto para la humedad com para la temperatura. 😭😭😭😭😭
+Para la temperatura, el update ocurre en todos los niveles. Esto es así porque en todas las horas hay observaciones de aviones en distintos niveles, a lo que se suman los sondeos en algunas horas específicas. 
 
-Voy a investigar donde metí la pata esta vez.
+En el caso de la humedad, el update es importante en niveles bajos solamente con una "burbuja" de humedad el día de mayor convección. Si bien las observaciones de humedad de aviones parecen no existir (al menos en algunos prepbufrs) y de sondeo (no se asimilan, por la configuración de GSI, pero se podría cambiar).
+
 
 ```{r echo=FALSE, warning=FALSE}
-E3_tq <- fread("analisis/perfil_lev_T_Q_ana_E5.csv") %>% 
+E5_tq <- fread("analisis/perfil_lev_T_Q_ana_E5.csv") %>% 
   .[fread("analisis/perfil_lev_T_Q_guess_E5.csv"), on = c("lev", "date")] %>% 
   .[, date := ymd_hms(date)] %>% 
   setnames(c("T", "QVAPOR", "i.T", "i.QVAPOR"), c("T_ana", "Q_ana", "T_guess", "Q_guess")) %>% 
@@ -58,7 +59,7 @@ E4_tq <- fread("analisis/perfil_lev_T_Q_ana_E4.csv") %>%
            Q_update = Q_ana - Q_guess,
            exp = "CONV")]
 
-rbind(E3_tq, E4_tq) %>%  
+rbind(E5_tq, E4_tq) %>%  
  # .[exp == "CONV"] %>% 
   ggplot(aes(date, lev)) +
   geom_contour_fill(aes(z = T_update), breaks = seq(-0.6, 0.6, 0.1)) +
@@ -80,7 +81,7 @@ rbind(E3_tq, E4_tq) %>%
         panel.grid = element_line(linetype = 3))
 
 
-rbind(E3_tq, E4_tq) %>%  
+rbind(E5_tq, E4_tq) %>%  
  # .[exp == "CONV"] %>% 
   ggplot(aes(date, lev)) +
   geom_contour_fill(aes(z = Q_update*1000), breaks = seq(-0.3, 0.6, 0.1),) +
@@ -101,6 +102,71 @@ rbind(E3_tq, E4_tq) %>%
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3))
 ```
+
+### Update en niveles
+
+```{r echo=FALSE, warning=FALSE}
+E5_tq <- fread("analisis/campo_lev_T_Q_ana_E5.csv") %>% 
+  .[fread("analisis/campo_lev_T_Q_guess_E5.csv"), on = c("lev", "date", "south_north", "west_east")] %>% 
+  .[, date := ymd_hms(date)] %>% 
+  setnames(c("T", "QVAPOR", "i.T", "i.QVAPOR"), c("T_ana", "Q_ana", "T_guess", "Q_guess")) %>% 
+  .[, `:=`(T_update = T_ana - T_guess,
+           Q_update = Q_ana - Q_guess,
+           exp = "CONV+AUT")]
+
+E4_tq <- fread("analisis/campo_lev_T_Q_ana_E4.csv") %>% 
+  .[fread("analisis/campo_lev_T_Q_guess_E4.csv"), on = c("lev", "date", "south_north", "west_east")] %>% 
+  .[, date := ymd_hms(date)] %>% 
+  setnames(c("T", "QVAPOR", "i.T", "i.QVAPOR"), c("T_ana", "Q_ana", "T_guess", "Q_guess")) %>% 
+  .[, `:=`(T_update = T_ana - T_guess,
+           Q_update = Q_ana - Q_guess,
+           exp = "CONV")]
+```
+
+```{r echo=FALSE, warning=FALSE}
+E5_tq[lev == 500] %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_contour_fill(aes(z = T_update), breaks = seq(-4, 4, 1)) +
+  scale_fill_divergent(name = "Update",
+                       breaks = seq(-4, 4, 1),
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 25,
+                                                barheight = 0.8)) +
+  geom_contour(data = E4_tq[lev == 500], aes(z = T_update, linetype = factor(-sign(..level..))), 
+               color = "black",
+               size = 0.3,
+               breaks = seq(-4, 4, 1)) +
+  scale_linetype_discrete(guide = "none") +
+  facet_wrap(~factor(date)) +
+  coord_equal() +
+  labs(title = "500 hPa") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+
+E5_tq[lev == 200] %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_contour_fill(aes(z = T_update), breaks = seq(-4, 4, 1)) +
+  scale_fill_divergent(name = "Update",
+                       breaks = seq(-4, 4, 1),
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 25,
+                                                barheight = 0.8)) +
+  geom_contour(data = E4_tq[lev == 200], aes(z = T_update, linetype = factor(-sign(..level..))), 
+               color = "black",
+               size = 0.3,
+               breaks = seq(-4, 4, 1)) +
+  scale_linetype_discrete(guide = "none") +
+  facet_wrap(~factor(date)) +
+  coord_equal() +
+  labs(title = "200 hPa") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
 
 
 ## Diferencias en la horizontal 
@@ -157,7 +223,9 @@ rbind(dbz, dbz_E4) %>%
 Vamos a reconocer que hay un elefante en la sala y que algo en el sistema de asimilación no está funcionando como debería. Vamos a analizar las observaciones asimiladas por cada experimento.
 
 ```{r echo=FALSE}
-files <- list.files("analisis/diagfiles/E5", recursive = TRUE, full.names = TRUE, pattern = "asim_conv")
+
+# files <- list.files("analisis/diagfiles/", recursive = TRUE, full.names = TRUE, pattern = "asim_conv")
+files <- Sys.glob("analisis/diagfiles/E[4-5]/asim_conv*")
 
 obs <- purrr::map(files, function(f) { 
   diag <- fread(f) %>% 
@@ -181,7 +249,7 @@ De esta figura me preocupan varias cosas:
 * La cantidad de observaciones rechazadas (línea a trazos), sobre todo en la humedad. En la presión no me molesta porque estoy agregando observaciones de estaciones automáticas que no tienen esa observación y entonces cuando mira p rechaza el registro.
 * El cambio en uv justo antes de las 00Z del 22 --> Como que de repente las que se rechazaban se dejan de rechazar. Habré usado la rutina incorrecta para codificar las observaciones de estaciones automáticas A MITAD DE CAMINO?
 
-
+*Update: TODO ARREGLADO!!*
 
 ```{r echo=FALSE}
 obs[, .N, by = .(var, date, exp, usage.flag)] %>% 
