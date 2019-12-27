@@ -1,0 +1,36 @@
+---
+title: "Un buen análisis necesita un buen ensamble"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Consistency ratio
+
+De acuerdo con Schwartz 2015, en un sistema de asimilación/pronóstico bien calibrado al comparar con las observaciones, el error cuadrático medio de la media del prior ensamble (RMSE) va a ser **igual** al spread total del sprior, es decir, a la raiz cuadrada de la suma de la varianza del error de las observaciones y la varianza de las observaciones simuladas por el prior. 
+
+Schwartz 2015 usa esto y calcula un *consistency ratio* (CR) o tasa entre el spread total y el RMSE. Si El CR es cercano a 1, el ensamble estará bien calibrado, un CR < 1 indica que el spread en insuficiente. Si CR > 1 entonces el spread es demasiado grande o tal vez se sobreestima el error de las observaciones.
+
+[](fig/CR_shwartz.png)
+
+Dowell y Wicker 2009 describen esta métrica matemáticamente. La inovación promediada en volumen $\left \langle d \right \rangle$ se calcula como:
+
+$$d = y^o - \overline{H(\mathbf{x}^f)}$$
+
+Donde los $\left \langle  \right \rangle$ denotan un promedio sobre las observaciones en un volumen determinado (en el caso del paper lo hace para cada volumen de radar, pero podría ser por región, podría ser un promedio temporal, etc.). El error cuadrático medio de la inovación se calcula como:
+
+$$RMSE = \sqrt{ \left \langle (d - \left \langle d \right \rangle)^2 \right \rangle }$$
+Y una medida del spread del ensamble incluyendo el error de la observación se calcula como:
+
+$$spread=\sqrt{\sigma^2 + \left \langle \frac{1}{N-1}\sum_{n=1}^{N}[H(\mathbf{x}_n)-\overline{H(\mathbf{x})}]^2 \right \rangle} $$
+
+Donde $\sigma^2$ dependerá de la oservación. 
+
+Finalmente, como la estadística del ensamble debe podeer representar los errores del pronóstico y teniendo en cuenta que no conocemos los errores reales, calculamos la tasa de consistencia:
+
+$$CR = \frac{\sigma^2_{vr} + \left \langle \frac{1}{N-1}\sum_{n=1}^{N}[H(\mathbf{x}_n)-\overline{H(\mathbf{x})}]^2 \right \rangle}{\left \langle (d-\left \langle d \right \rangle)^2 \right \rangle}$$
+
+## 
+
