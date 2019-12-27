@@ -32,5 +32,9 @@ Finalmente, como la estadística del ensamble debe podeer representar los errore
 
 $$CR = \frac{\sigma^2_{vr} + \left \langle \frac{1}{N-1}\sum_{n=1}^{N}[H(\mathbf{x}_n)-\overline{H(\mathbf{x})}]^2 \right \rangle}{\left \langle (d-\left \langle d \right \rangle)^2 \right \rangle}$$
 
-## 
+## Variable aleatoria random algoasí
+
+$$ \xi = \frac{\overline{\mathbf{x}}^f-y^o }{spread} $$
+
+Si el ensamble está bien definido, entonces $\xi$ tendrá una distribución normal con media cero y desvío 1. El cálculo de $\xi$ se puede hacer en cada punto donde hay una observación.
 
