@@ -368,7 +368,7 @@ summary {
 
 <div id="consistency-ratio" class="section level2">
 <h2>Consistency ratio</h2>
-<p>De acuerdo con Schwartz 2015, en un sistema de asimilación/pronóstico bien calibrado al comparar con las observaciones, el error cuadrático medio de la media del prior ensamble (RMSE) va a ser <strong>igual</strong> al spread total del sprior, es decir, a la raiz cuadrada de la suma de la varianza del error de las observaciones y la varianza de las observaciones simuladas por el prior.</p>
+<p>De acuerdo con Schwartz 2015, en un sistema de asimilación/pronóstico bien calibrado al comparar con las observaciones, el error cuadrático medio de la media del prior ensamble (RMSE) va a ser <em>igual</em> al spread total del sprior, es decir, a la raiz cuadrada de la suma de la varianza del error de las observaciones y la varianza de las observaciones simuladas por el prior.</p>
 <p>Schwartz 2015 usa esto y calcula un <em>consistency ratio</em> (CR) o tasa entre el spread total y el RMSE. Si El CR es cercano a 1, el ensamble estará bien calibrado, un CR &lt; 1 indica que el spread en insuficiente. Si CR &gt; 1 entonces el spread es demasiado grande o tal vez se sobreestima el error de las observaciones.</p>
 <p><a href="fig/CR_shwartz.png"></a></p>
 <p>Dowell y Wicker 2009 describen esta métrica matemáticamente. La inovación promediada en volumen <span class="math inline">\(\left \langle d \right \rangle\)</span> se calcula como:</p>
@@ -380,10 +380,16 @@ summary {
 <p>Finalmente, como la estadística del ensamble debe podeer representar los errores del pronóstico y teniendo en cuenta que no conocemos los errores reales, calculamos la tasa de consistencia:</p>
 <p><span class="math display">\[CR = \frac{\sigma^2_{vr} + \left \langle \frac{1}{N-1}\sum_{n=1}^{N}[H(\mathbf{x}_n)-\overline{H(\mathbf{x})}]^2 \right \rangle}{\left \langle (d-\left \langle d \right \rangle)^2 \right \rangle}\]</span></p>
 </div>
-<div id="variable-aleatoria-random-algoasí" class="section level2">
-<h2>Variable aleatoria random algoasí</h2>
-<p><span class="math display">\[ \xi = \frac{\overline{\mathbf{x}}^f-y^o }{spread} \]</span></p>
-<p>Si el ensamble está bien definido, entonces <span class="math inline">\(\xi\)</span> tendrá una distribución normal con media cero y desvío 1. El cálculo de <span class="math inline">\(\xi\)</span> se puede hacer en cada punto donde hay una observación.</p>
+<div id="reduced-centered-random-variable" class="section level2">
+<h2>Reduced Centered Random Variable</h2>
+<p>De acuerdo a Candille et.al. 2006 un sistema de pronóstico por ensambls es confiable o es estadísticamente convincente si la observación <span class="math inline">\(y^o\)</span> es una realización independiente de la PDF (probality distribution function) generado por el ensamble. En otras palabras, si la observación es indistinguible de los valores predichos por el ensamble.</p>
+<p>Sea <span class="math inline">\(m\)</span> la media y <span class="math inline">\(\sigma\)</span> el desvío estandar del ensamble y <span class="math inline">\(\sigma_o\)</span> el error de la observación, se define la <em>Reduced Centered Random Variable</em> <span class="math inline">\(y\)</span> como:</p>
+<p><span class="math display">\[ y = \frac{y^o - m}{\sqrt{\sigma_o^2 +\sigma^ 2}} \]</span></p>
+<p>El <strong>primer momento</strong> de <span class="math inline">\(y\)</span> corresponde al promedio sobre todas las realizaciones y representa el bis pesado entre el ensamble y la observación:</p>
+<p><span class="math display">\[ b = E[y] \]</span></p>
+<p>El <strong>segundo momento</strong> de <span class="math inline">\(y\)</span> es su desvío estandar y da cuenta de la sobre o infra dispersión sistemática del ensamble. Mide la relación entre el spread del ensamble y el error de la observación con la amplitud del error del pronóstico.</p>
+<p><span class="math display">\[ d = \sqrt{\frac{M}{M-1} E[(y-b)^2]} \]</span></p>
+<p>El sistema de pronóstico por ensamble será confiable si <span class="math inline">\(b=0\)</span> es decir, sin bias; y <span class="math inline">\(d = 1\)</span> (con <span class="math inline">\(d&gt;1 \rightarrow underdispersive\)</span> y <span class="math inline">\(d&lt;1 \rightarrow overdispersive\)</span>).</p>
 </div>
 
 
