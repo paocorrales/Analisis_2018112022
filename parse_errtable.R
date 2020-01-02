@@ -15,7 +15,7 @@ split_chunks <- function(string, pattern = "OBSERVATION TYPE", negate = FALSE) {
   chunks
 }
 
-string <- split_chunks(errtable, "OBSERVATION TYPE")
+string <- split_chunks(string, "OBSERVATION TYPE")
 
 chunk <- string[[1]]
 
@@ -31,4 +31,19 @@ parse_chunk <- function(chunk) {
 errtable <- map(string, parse_chunk) %>% 
   rbindlist(idcol = "type") 
 
-str(errtable)
+na_fill <- function(x, na.char) {
+  nas <- grepl(na.char, x)
+  x[nas] <- NA
+  return(x)
+}
+
+errtable %>% 
+  mutate(type = as.numeric(type)) %>% 
+  rename(nivel = V1, 
+         t = V2,
+         rh = V3,
+         uv = V4,
+         p = V5, 
+         pw = V6) %>% 
+  mutate_all(~ifelse(. == 1e+09, NA, .)) %>% 
+  write_csv("errtable.csv")
