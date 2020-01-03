@@ -5,6 +5,9 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(data.table)
 ```
 
 ## Consistency ratio
@@ -13,7 +16,7 @@ De acuerdo con Schwartz 2015, en un sistema de asimilación/pronóstico bien cal
 
 Schwartz 2015 usa esto y calcula un *consistency ratio* (CR) o tasa entre el spread total y el RMSE. Si El CR es cercano a 1, el ensamble estará bien calibrado, un CR < 1 indica que el spread en insuficiente. Si CR > 1 entonces el spread es demasiado grande o tal vez se sobreestima el error de las observaciones.
 
-[](fig/CR_shwartz.png)
+![](fig/CR_shwartz.png)
 
 Dowell y Wicker 2009 describen esta métrica matemáticamente. La inovación promediada en volumen $\left \langle d \right \rangle$ se calcula como:
 
@@ -49,4 +52,45 @@ El **segundo momento** de $y$ es su desvío estandar y da cuenta de la sobre o i
 $$ d = \sqrt{\frac{M}{M-1} E[(y-b)^2]} $$
 
 El sistema de pronóstico por ensamble será confiable si $b=0$ es decir, sin bias; y $d = 1$ (con $d>1 \rightarrow underdispersive$ y $d<1 \rightarrow overdispersive$).
+
+## Implementación
+
+```{r}
+path <- "analisis/diagfiles/E5/asim_conv_20181120180000"
+
+read_diag <- function(path) {
+  
+  files <- Sys.glob(paste0(path, ".mem*"))
+  
+  obs <- purrr::map(files, function(f) { 
+    diag <- fread(f) %>% 
+      .[, exp := basename(dirname(f))] %>% 
+      .[, mem := str_extract(f, "\\d{3}$")] %>% 
+      .[, date := ymd_hms(str_extract(f, "\\d{14}"))] %>% 
+      .[, id := 1:.N] %>% 
+      .[]
+  }) %>% 
+    rbindlist() %>% 
+    .[, c("V2", "V4") := NULL]
+  
+  colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "mem", "date", "id")
+  
+  f <- paste0(path, ".ensmean")
+  
+  mean <- fread(f) %>% 
+    .[, exp := basename(dirname(f))] %>% 
+    # .[, mem := "000"] %>% 
+    .[, date := ymd_hms(str_extract(f, "\\d{14}"))] %>% 
+    .[, id := 1:.N] %>%  
+    .[, c("V2", "V4") := NULL]
+  
+  colnames(mean) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp",  "date", "id")
+  
+  mean[, .(id, mean.obs.guess = obs.guess, mean.obs.guess2 = obs.guess2, mean.rerr = rerr)] %>%   .[obs, on = .(id)]
+}
+
+a <- read_diag(path)
+
+
+```
 
