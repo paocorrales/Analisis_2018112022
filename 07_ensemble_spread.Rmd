@@ -8,6 +8,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(lubridate)
 library(data.table)
+library(metR)
+source("help_functions.R")
 ```
 
 ## Consistency ratio
@@ -35,6 +37,8 @@ Finalmente, como la estadística del ensamble debe podeer representar los errore
 
 $$CR = \frac{\sigma^2_{vr} + \left \langle \frac{1}{N-1}\sum_{n=1}^{N}[H(\mathbf{x}_n)-\overline{H(\mathbf{x})}]^2 \right \rangle}{\left \langle (d-\left \langle d \right \rangle)^2 \right \rangle}$$
 
+El $CR$ debería ser cercano a 1, un $CR < 1$ indica que el ensamble tiene un spread insuficiente y $CR > 1$ podría indicar una sobreestimación de los errores de las observaciones. 
+
 ## Reduced Centered Random Variable
 
 De acuerdo a Candille et.al. 2006 un sistema de pronóstico por ensambls es confiable o es estadísticamente convincente si la observación $y^o$ es una realización independiente de la PDF (probality distribution function) generado por el ensamble. En otras palabras, si la observación es indistinguible de los valores predichos por el ensamble.
@@ -56,41 +60,20 @@ El sistema de pronóstico por ensamble será confiable si $b=0$ es decir, sin bi
 ## Implementación
 
 ```{r}
-path <- "analisis/diagfiles/E5/asim_conv_20181120180000"
+path <- "analisis/diagfiles/E5/asim_conv_2018112*"
 
-read_diag <- function(path) {
-  
-  files <- Sys.glob(paste0(path, ".mem*"))
-  
-  obs <- purrr::map(files, function(f) { 
-    diag <- fread(f) %>% 
-      .[, exp := basename(dirname(f))] %>% 
-      .[, mem := str_extract(f, "\\d{3}$")] %>% 
-      .[, date := ymd_hms(str_extract(f, "\\d{14}"))] %>% 
-      .[, id := 1:.N] %>% 
-      .[]
-  }) %>% 
-    rbindlist() %>% 
-    .[, c("V2", "V4") := NULL]
-  
-  colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "mem", "date", "id")
-  
-  f <- paste0(path, ".ensmean")
-  
-  mean <- fread(f) %>% 
-    .[, exp := basename(dirname(f))] %>% 
-    # .[, mem := "000"] %>% 
-    .[, date := ymd_hms(str_extract(f, "\\d{14}"))] %>% 
-    .[, id := 1:.N] %>%  
-    .[, c("V2", "V4") := NULL]
-  
-  colnames(mean) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp",  "date", "id")
-  
-  mean[, .(id, mean.obs.guess = obs.guess, mean.obs.guess2 = obs.guess2, mean.rerr = rerr)] %>%   .[obs, on = .(id)]
-}
-
-a <- read_diag(path)
+perfiles <- read_diag(path, variable = c("uv", "t")) %>% 
+  .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]
 
 
+# cr <- get_cr(perfiles[type %in% c(181, 187, 281, 287,)])
+cr <- get_cr(perfiles[type %in% c(120, 130, 131, 133, 220, 230, 231, 233)])
+
+cr[is.finite(cr) & count > 500] %>% 
+  ggplot(aes(cr, nivel.error)) +
+    geom_vline(xintercept = 1, color = "darkgrey") +
+  geom_point(aes(color = factor(type))) +
+  scale_y_level() +
+  facet_wrap(~var)
 ```
 
