@@ -43,7 +43,7 @@ errtable %>%
          t = V2,
          rh = V3,
          uv = V4,
-         p = V5, 
+         ps = V5, 
          pw = V6) %>% 
   mutate_all(~ifelse(. == 1e+09, NA, .)) %>% 
   write_csv("errtable.csv")
