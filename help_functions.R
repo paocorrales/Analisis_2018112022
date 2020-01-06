@@ -17,25 +17,32 @@ read_diag <- function(path, variable) {
                  .packages = c("data.table", "metR", "lubridate", "tidyverse"),
                  .export = c("files", "variable"),
                  .combine = "rbind") %dopar% {
+                   
+    # sink("log.txt", append=TRUE)
     
-    diag <- fread(f) %>% 
-      .[, exp := basename(dirname(f))] %>% 
-      .[, mem := str_extract(f, "\\d{3}$")] %>% 
-      .[, date := ymd_hms(str_extract(f, "\\d{14}"))] %>% 
+    diag <- fread(files[f]) %>% 
+      .[V10 == 1] %>% 
+      .[, exp := basename(dirname(files[f]))] %>% 
+      .[, mem := str_extract(files[f], "\\d{3}$")] %>% 
+      .[, date := ymd_hms(str_extract(files[f], "\\d{14}"))] %>% 
       .[, c("V2", "V4") := NULL]
+    
+    # cat("Archivo ", basename(files[f]))
   
-  colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "mem", "date")
+  colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "mem", "date")
   
   if ("uv" %in% variable & length(variable) == 1) {
-    obs <- obs[var == "uv"] %>% 
-      melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
-      .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
-      .[, variable := str_remove(variable, "2")] %>% 
-      pivot_wider(names_from = variable, values_from = value) %>% 
-      setDT %>% 
-      .[, id := 1:.N, by = mem] 
+  
+      diag <- diag[var == "uv"] %>% 
+        melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
+        .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
+        .[, variable := str_remove(variable, "2")] %>% 
+        pivot_wider(names_from = variable, values_from = value) %>% 
+        setDT %>% 
+        .[, id := 1:.N, by = mem] 
+    
   } else if ("uv" %in% variable & length(variable) != 1) {
-    uv <- obs[var == "uv"] %>% 
+    uv <- diag[var == "uv"] %>% 
       melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
       .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
       .[, variable := str_remove(variable, "2")] %>% 
@@ -44,18 +51,20 @@ read_diag <- function(path, variable) {
     
     variable <- c(variable, "u", "v")
     
-    obs <- obs[var != "uv", -c("obs2", "obs.guess2"), with = FALSE] %>% 
+    diag <- diag[var != "uv", -c("obs2", "obs.guess2"), with = FALSE] %>% 
       rbind(uv) %>% 
       .[var %in% variable] %>% 
       .[, id := 1:.N, by = mem]  
+    
   } else {
-    obs <- obs[var %in% variable, -c("obs2", "obs.guess2"), with = FALSE] %>% 
+    diag <- diag[var %in% variable, -c("obs2", "obs.guess2"), with = FALSE] %>% 
       .[, id := 1:.N, by = mem] 
   }
   
-  obs[, obs := ifelse(obs == -1e+05, NA, obs)]
+  diag[, obs := ifelse(obs == -1e+05, NA, obs)][]
 }
   stopCluster(myCluster)
+  return(obs)
 }
 
 # input_obs_error ---------------------------------------------------------
