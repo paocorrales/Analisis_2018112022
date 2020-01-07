@@ -18,51 +18,61 @@ read_diag <- function(path, variable) {
                  .export = c("files", "variable"),
                  .combine = "rbind") %dopar% {
                    
-    # sink("log.txt", append=TRUE)
-    
-    diag <- fread(files[f]) %>% 
-      .[V10 == 1] %>% 
-      .[, exp := basename(dirname(files[f]))] %>% 
-      .[, mem := str_extract(files[f], "\\d{3}$")] %>% 
-      .[, date := ymd_hms(str_extract(files[f], "\\d{14}"))] %>% 
-      .[, c("V2", "V4") := NULL]
-    
-    # cat("Archivo ", basename(files[f]))
-  
-  colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "mem", "date")
-  
-  if ("uv" %in% variable & length(variable) == 1) {
-  
-      diag <- diag[var == "uv"] %>% 
-        melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
-        .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
-        .[, variable := str_remove(variable, "2")] %>% 
-        pivot_wider(names_from = variable, values_from = value) %>% 
-        setDT %>% 
-        .[, id := 1:.N, by = mem] 
-    
-  } else if ("uv" %in% variable & length(variable) != 1) {
-    uv <- diag[var == "uv"] %>% 
-      melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
-      .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
-      .[, variable := str_remove(variable, "2")] %>% 
-      pivot_wider(names_from = variable, values_from = value) %>% 
-      setDT
-    
-    variable <- c(variable, "u", "v")
-    
-    diag <- diag[var != "uv", -c("obs2", "obs.guess2"), with = FALSE] %>% 
-      rbind(uv) %>% 
-      .[var %in% variable] %>% 
-      .[, id := 1:.N, by = mem]  
-    
-  } else {
-    diag <- diag[var %in% variable, -c("obs2", "obs.guess2"), with = FALSE] %>% 
-      .[, id := 1:.N, by = mem] 
-  }
-  
-  diag[, obs := ifelse(obs == -1e+05, NA, obs)][]
-}
+                   # sink("log.txt", append=TRUE)
+                   
+                   diag <- fread(files[f]) %>% 
+                     .[V10 == 1] %>% 
+                     .[, exp := basename(dirname(files[f]))] %>% 
+                     .[, mem := str_extract(files[f], "\\d{3}$")] %>% 
+                     .[, date := ymd_hms(str_extract(files[f], "\\d{14}"))] %>% 
+                     .[, c("V2", "V4") := NULL]
+                   
+                   # cat("Archivo ", basename(files[f]))
+                   
+                   colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "mem", "date")
+                   
+                   if ("uv" %in% variable & length(variable) == 1) {
+                     
+                     diag <- diag[var == "uv"] %>% 
+                       melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
+                       .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
+                       .[, variable := str_remove(variable, "2")] 
+                     
+                     vars <- rlang::syms(setdiff(names(diag), "value")) 
+                     diag <- diag %>% 
+                       distinct(!!!vars, .keep_all = TRUE) %>%  
+                       pivot_wider(names_from = variable, values_from = value) %>% 
+                       setDT %>% 
+                       .[, id := 1:.N, by = mem] 
+                     
+                   } else if ("uv" %in% variable & length(variable) != 1) {
+                     
+                     
+                     uv <- diag[var == "uv"] %>% 
+                       melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
+                       .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
+                       .[, variable := str_remove(variable, "2")] 
+                     
+                     vars <- rlang::syms(setdiff(names(uv), "value")) 
+                     uv <- uv %>% 
+                       distinct(!!!vars, .keep_all = TRUE) %>% 
+                       pivot_wider(names_from = variable, values_from = value) %>% 
+                       setDT
+                     
+                     variable <- c(variable, "u", "v")
+                     
+                     diag <- diag[var != "uv", -c("obs2", "obs.guess2"), with = FALSE] %>% 
+                       rbind(uv) %>% 
+                       .[var %in% variable] %>% 
+                       .[, id := 1:.N, by = mem]  
+                     
+                   } else {
+                     diag <- diag[var %in% variable, -c("obs2", "obs.guess2"), with = FALSE] %>% 
+                       .[, id := 1:.N, by = mem] 
+                   }
+                   
+                   diag[, obs := ifelse(obs == -1e+05, NA, obs)][]
+                 }
   stopCluster(myCluster)
   return(obs)
 }
@@ -77,7 +87,7 @@ input_obs_error <- function(variable, type, nivel, path_to_errtable = "errtable.
              pw = NULL)] %>% 
     melt(id.vars = c("type", "nivel"))
   
-
+  
   data.table(variable = variable, type = type, pressure = nivel) %>% 
     .[, nivel := errtable[metR::Similar(nivel, pressure), unique(nivel)], by = pressure] %>% 
     errtable[., on = .NATURAL] %>% 
@@ -90,29 +100,57 @@ input_obs_error <- function(variable, type, nivel, path_to_errtable = "errtable.
 
 get_cr <-  function(dt, tipo = "superficie") {
   
-  if (tipo == "superficie") {
-    dt[usage.flag == 1 & !is.na(obs)] %>% 
-      .[, guess := obs - obs.guess] %>% 
-      .[, ":="(guess.mean = mean(guess),
-               obs.guess.mean = mean(obs.guess),
-               var.guess = var(guess)), by = .(id, date)] %>% 
-      .[, ":="(d.mean = mean(obs.guess.mean)), by = .(var, type)] %>% 
-      .[, .(dd = mean((obs.guess.mean - d.mean)^2),
-            rmse = error[1]^2 + mean(var.guess, na.rm = TRUE),
-            bias = mean(obs.guess, na.rm = TRUE),
-            count = .N),  by = .(var, type)] %>% 
-      .[, cr := rmse / dd]
+  if ("temporal" %in% tipo) {
+    if ("superficie" %in% tipo) {
+      dt[usage.flag == 1 & !is.na(obs)] %>% 
+        .[, guess := obs - obs.guess] %>% 
+        .[, ":="(guess.mean = mean(guess),
+                 obs.guess.mean = mean(obs.guess),                # media de la innovación (y0 - H(xf)) para el ensamble 
+                 var.guess = var(guess)), by = .(id, date)] %>%   # varianza de H(xf) calculada sobre el ensamble
+        .[, ":="(d.mean = mean(obs.guess.mean)), by = .(var, type, date)] %>% # innovación promediada sobre el dominio para cada tipo de obs
+        .[, .(rmsi = mean((obs.guess.mean - d.mean)^2),                       # <(d - <d>)^2>
+              spread = error[1]^2 + mean(var.guess, na.rm = TRUE),            # error^2 + media de la varianza de H(xf) sobre el dominio
+              bias = mean(obs.guess, na.rm = TRUE),                           # bias hecho y derecho, obs.guess = y0 - H(xf)
+              count = .N),  by = .(var, type, date)] %>%                      # Cantidad de observaciones por tipo (x60)
+        .[, cr := spread / rmsi]
+    } else {
+      dt[usage.flag == 1 & !is.na(obs)] %>% 
+        .[, guess := obs - obs.guess] %>% 
+        .[, ":="(guess.mean = mean(guess),
+                 obs.guess.mean = mean(obs.guess),
+                 var.guess = var(guess)), by = .(id, date)] %>% 
+        .[, ":="(d.mean = mean(obs.guess.mean)), by = .(var, type, nivel.error, date)] %>% 
+        .[, .(rmsi = mean((obs.guess.mean - d.mean)^2),
+              spread = error[1]^2 + mean(var.guess, na.rm = TRUE),
+              bias = mean(obs.guess, na.rm = TRUE),
+              count = .N),  by = .(var, type, nivel.error, date)] %>% 
+        .[, cr := spread / rmsi]
+    } 
   } else {
-    dt[usage.flag == 1 & !is.na(obs)] %>% 
-      .[, guess := obs - obs.guess] %>% 
-      .[, ":="(guess.mean = mean(guess),
-               obs.guess.mean = mean(obs.guess),
-               var.guess = var(guess)), by = .(id, date)] %>% 
-      .[, ":="(d.mean = mean(obs.guess.mean)), by = .(var, type, nivel.error)] %>% 
-      .[, .(dd = mean((obs.guess.mean - d.mean)^2),
-            rmse = error[1]^2 + mean(var.guess, na.rm = TRUE),
-            bias = mean(obs.guess, na.rm = TRUE),
-            count = .N),  by = .(var, type, nivel.error)] %>% 
-      .[, cr := rmse / dd]
+    if ("superficie" %in% tipo) {
+      dt[usage.flag == 1 & !is.na(obs)] %>% 
+        .[, guess := obs - obs.guess] %>% 
+        .[, ":="(guess.mean = mean(guess),
+                 obs.guess.mean = mean(obs.guess),
+                 var.guess = var(guess)), by = .(id, date)] %>% 
+        .[, ":="(d.mean = mean(obs.guess.mean)), by = .(var, type)] %>% 
+        .[, .(rmsi = mean((obs.guess.mean - d.mean)^2),
+              spread = error[1]^2 + mean(var.guess, na.rm = TRUE),
+              bias = mean(obs.guess, na.rm = TRUE),
+              count = .N),  by = .(var, type)] %>% 
+        .[, cr := spread / rmsi]
+    } else {
+      dt[usage.flag == 1 & !is.na(obs)] %>% 
+        .[, guess := obs - obs.guess] %>% 
+        .[, ":="(guess.mean = mean(guess),
+                 obs.guess.mean = mean(obs.guess),
+                 var.guess = var(guess)), by = .(id, date)] %>% 
+        .[, ":="(d.mean = mean(obs.guess.mean)), by = .(var, type, nivel.error)] %>% 
+        .[, .(rmsi = mean((obs.guess.mean - d.mean)^2),
+              spread = error[1]^2 + mean(var.guess, na.rm = TRUE),
+              bias = mean(obs.guess, na.rm = TRUE),
+              count = .N),  by = .(var, type, nivel.error)] %>% 
+        .[, cr := spread / rmsi]
+    }
   }
 }
