@@ -39,6 +39,66 @@ $$CR = \frac{\sigma^2_{vr} + \left \langle \frac{1}{N-1}\sum_{n=1}^{N}[H(\mathbf
 
 El $CR$ debería ser cercano a 1, un $CR < 1$ indica que el ensamble tiene un spread insuficiente y $CR > 1$ podría indicar una sobreestimación de los errores de las observaciones. 
 
+### Implementación
+
+```{r include=FALSE}
+# path <- "analisis/diagfiles/E5/asim_conv_2018112*"
+# 
+# perfiles <- read_diag(path, variable = c("uv", "t")) %>% 
+#   .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]
+# 
+# cr <- get_cr(perfiles[type %in% c(181, 187, 281, 287)], tipo = c("superficie", "temporal"))
+# cr <- get_cr(perfiles[type %in% c(120, 130, 131, 133, 220, 230, 231, 233)], tipo = c("perfil", "temporal"))
+# 
+# fwrite(cr, "uvt_perfil_temporal.csv")
+```
+
+El la figura se muestra el CR a lo largo del tiempo para las observaciones de temperatura y viento en superficie (181 = con nivel de presión, 187 = sin nivel de presión). En primer lugar el CR es casi siempre mayor a 1 (inesperado) y en algunos casos llega a 100! En el caso de las observaciones de temperatura de 187 el CR es más cercano a lo esperado y coincide con que se calcula a partir de la mayor cantidad de observaciones. Comparando el viento meridional y el viento zonal, el CR del viento meridional es menor y más constante. 
+
+En promedio el CR para todo el periodo de asimilación y cada variables es siempre mayor a 1.
+
+```{r echo=FALSE}
+fread("uvt_superficie_temporal.csv") %>% 
+  .[, date := ymd_hms(date)] %>% 
+  .[is.finite(cr) & count > 1000] %>% 
+  ggplot(aes(date, cr)) +
+  geom_hline(yintercept = 1, color = "darkgrey") +
+  # geom_hline(yintercept = 0.00001, color = "darkgrey") +
+  geom_line(aes(color = factor(type), group = factor(type))) +
+  geom_point(aes(color = factor(type), size = count)) +
+  scale_x_datetime(date_labels = "%H", date_breaks = "3 hours") +
+  scale_y_log10() +
+  facet_wrap(~var, scales = "free_x", ncol = 1) +
+  labs(title = "Consistency ratio for surface observations",
+       x = "hour",
+       color = "Type of obs") +
+  theme_minimal()
+
+fread("uvt_superficie.csv") %>%
+  .[, .(var, type, count, cr)] %>% 
+  knitr::kable()
+```
+
+Para las observaciones de sondeos y aviones (con variación vertical) calculé el CR para distintos niveles de presión. Nuevamente el CR es mayor a 1 y el peor caso es la temperatura de sondeos (120). 
+
+```{r echo=FALSE}
+fread("uvt_perfil.csv") %>% 
+  .[is.finite(cr) & count > 1000] %>% 
+  ggplot(aes(nivel.error, cr)) +
+  geom_hline(yintercept = 1, color = "darkgray") +
+  geom_line(aes(color = factor(type))) +
+  geom_point(aes(color = factor(type), size = count)) +
+  scale_x_level() +
+  coord_flip() +
+  facet_wrap(~var, scales = "free_x") +
+  labs(title = "Consistency ratio for sounding and aircraft observations",
+       x = "nivel",
+       color = "Type of obs") +
+  theme_minimal()
+```
+
+Viendo esto me pregunto si los errores para cada tipo de observación están correctamente definidos. *Supuestamente* al estar usando GSI regional, el sistema ignora el error de la observación que lee del prepbufr y usa los errores codificados en la tabla **errtable** que son los que usé para el cálculo del CR. 
+
 ## Reduced Centered Random Variable
 
 De acuerdo a Candille et.al. 2006 un sistema de pronóstico por ensambls es confiable o es estadísticamente convincente si la observación $y^o$ es una realización independiente de la PDF (probality distribution function) generado por el ensamble. En otras palabras, si la observación es indistinguible de los valores predichos por el ensamble.
@@ -56,24 +116,4 @@ El **segundo momento** de $y$ es su desvío estandar y da cuenta de la sobre o i
 $$ d = \sqrt{\frac{M}{M-1} E[(y-b)^2]} $$
 
 El sistema de pronóstico por ensamble será confiable si $b=0$ es decir, sin bias; y $d = 1$ (con $d>1 \rightarrow underdispersive$ y $d<1 \rightarrow overdispersive$).
-
-## Implementación
-
-```{r}
-path <- "analisis/diagfiles/E5/asim_conv_2018112*"
-
-perfiles <- read_diag(path, variable = c("uv", "t")) %>% 
-  .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]
-
-
-# cr <- get_cr(perfiles[type %in% c(181, 187, 281, 287,)])
-cr <- get_cr(perfiles[type %in% c(120, 130, 131, 133, 220, 230, 231, 233)])
-
-cr[is.finite(cr) & count > 500] %>% 
-  ggplot(aes(cr, nivel.error)) +
-    geom_vline(xintercept = 1, color = "darkgrey") +
-  geom_point(aes(color = factor(type))) +
-  scale_y_level() +
-  facet_wrap(~var)
-```
 
