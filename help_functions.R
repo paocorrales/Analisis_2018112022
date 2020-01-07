@@ -154,3 +154,45 @@ get_cr <-  function(dt, tipo = "superficie") {
     }
   }
 }
+
+
+# RCRV --------------------------------------------------------------------
+
+get_RCRV <- function(dt, tipo = "superficie") {
+  
+  if ("temporal" %in% tipo) {
+    if ("superficie" %in% tipo) {
+      dt[usage.flag == 1 & !is.na(obs)] %>% 
+        .[, ":="(mean.guess = mean(obs - obs.guess, na.rm = TRUE),
+                 sd.guess = sd(obs - obs.guess, na.rm = TRUE)), by = .(id, date)] %>% 
+        .[, y := (obs - mean.guess)/sqrt(sd.guess^2 + error^2), by = .(id, date)] %>% 
+        .[, .(mean.y = mean(y, na.rm = TRUE),
+              sd.y = sd(y, na.rm = TRUE)), by = .(var, type, date)]
+    } else {
+      dt[usage.flag == 1 & !is.na(obs)] %>% 
+        .[, ":="(mean.guess = mean(obs - obs.guess, na.rm = TRUE),
+                 sd.guess = sd(obs - obs.guess, na.rm = TRUE)), by = .(id, date)] %>% 
+        .[, y := (obs - mean.guess)/sqrt(sd.guess^2 + error^2), by = .(id, date)] %>% 
+        .[, .(mean.y = mean(y, na.rm = TRUE),
+              sd.y = sd(y, na.rm = TRUE)), by = .(var, type, nivel.error, date)]
+    } 
+  } else {
+    if ("superficie" %in% tipo) {
+      dt[usage.flag == 1 & !is.na(obs)] %>% 
+        .[, ":="(mean.guess = mean(obs - obs.guess, na.rm = TRUE),
+                 sd.guess = sd(obs - obs.guess, na.rm = TRUE)), by = .(id, date)] %>% 
+        .[, y := (obs - mean.guess)/sqrt(sd.guess^2 + error^2), by = .(id, date)] %>% 
+        .[, .(mean.y = mean(y, na.rm = TRUE),
+              sd.y = sd(y, na.rm = TRUE)), by = .(var, type)]
+    } else {
+      dt[usage.flag == 1 & !is.na(obs)] %>% 
+        .[, ":="(mean.guess = mean(obs - obs.guess, na.rm = TRUE),
+                 sd.guess = sd(obs - obs.guess, na.rm = TRUE)), by = .(id, date)] %>% 
+        .[, y := (obs - mean.guess)/sqrt(sd.guess^2 + error^2), by = .(id, date)] %>% 
+        .[, .(mean.y = mean(y, na.rm = TRUE),
+              sd.y = sd(y, na.rm = TRUE)), by = .(var, type, nivel.error)]
+    }
+  }
+  
+}
+
