@@ -15,26 +15,96 @@ En la [Tabla 18](https://www.emc.ncep.noaa.gov/mmb/data_processing/prepbufr.doc/
 
 ### Satwnd Header Definitions:
 
-DATACAT = BUFR Data Category
-SAID = Satellite Identifier
-OCID = Identification of originating/generating center (GCLONG in BUFR)
-CLAS = Satellite Classification (SCLF in BUFR)
-RPID = Report Identifier
-SIDP = Satellite Used in Instrument Processing
-SWCM = Satellite Derived Wind Computation Method
-YEAR = YEAR
-MNTH = MONTH
-DAY = DAY
-HOUR = HOUR
-MIN = MIN
-LAT = Latitude (Deg)
-LON = Longitude (Deg)
-PRSL = Pressure (Pa) 
-TMP = Temperature/Dry Bulb Temperature (K)
-WDIR = Wind Direction (Degree True)
-WSPD = Wind Speed (m/s)
+- DATACAT = BUFR Data Category
+- SAID = Satellite Identifier
+- OCID = Identification of originating/generating center (GCLONG in BUFR)
+- CLAS = Satellite Classification (SCLF in BUFR)
+- RPID = Report Identifier
+- SIDP = Satellite Used in Instrument Processing
+- SWCM = Satellite Derived Wind Computation Method
+- YEAR = YEAR
+- MNTH = MONTH
+- DAY = DAY
+- HOUR = HOUR
+- MIN = MIN
+- LAT = Latitude (Deg)
+- LON = Longitude (Deg)
+- PRSL = Pressure (Pa) 
+- TMP = Temperature/Dry Bulb Temperature (K)
+- WDIR = Wind Direction (Degree True)
+- WSPD = Wind Speed (m/s)
 
 
-Notas sobre GSI:
+### GSI
  
-- Reconoce el bufr de este tipo de observaciones si el archivo se llama **satwndbufr**
+**read_obs.f90**
+
+- Reconoce el bufr de este tipo de observaciones si el archivo se llama **satwndbufr** y llama a la rutina **read_satwnd**
+
+**read_satwnd.f90**
+
+For the satellite ID type: 
+
+- 240: GOES short wave winds, 
+- 241: India, 
+- 242: JMA Visible,
+- 243: EUMETSAT visible,
+- 244: AVHRR winds
+- 245: GOES IR. 
+- 246: GOES WV cloud top, 
+- 247: GOES WV deep layer
+- 250: JMA WV deep layer. 
+- 251: GOES visible, 
+- 252: JMA IR winds
+- 253: EUMETSAT IR winds, 
+- 254: EUMETSAT WV deep layer winds
+- 257,258,259: MODIS IR,WV cloud top, WV deep layer winds
+- 260: VIIR IR winds
+
+For satellite subtype: 
+
+- 50-80 from EUMETSAT geostationary satellites(METEOSAT) 
+- 100-199 from JMA geostationary satellites(MTSAT)
+- 250-299 from NESDIS geostationary satellites(GOES)
+- 700-799 from NASA Terra and Aqua satellites
+- <10, 200-223 from NOAA-15, 16, 17, 18, polar orbit and EUMESAT MetOp satellites 
+
+The quality mark:the values range from 0 to 15.
+
+- 0-7 used: 0 is best, when the value greater than 3, the observation error needed to be enflated. 
+- 8-15 monitored
+
+Notas:
+
+- Rechaza observaciones por encima de 125mb.
+- Rechaza observaciones con quality marker 12 o 14.
+- Algunas restricciones extras dependiendo del tipo de observación, por ejemplo:
+  - Velocidad mínima de 10m/s para CAWV (type = 247), qm = 15
+  - qm=15 !reject data with low QI
+  
+#### diagfile
+
+- cdata_all(1,iout)=woe                  ! wind error
+- cdata_all(2,iout)=dlon                 ! grid relative longitude
+- cdata_all(3,iout)=dlat                 ! grid relative latitude
+- cdata_all(4,iout)=dlnpob               ! ln(pressure in cb)
+- cdata_all(5,iout)=ee                   !  quality information 
+- cdata_all(6,iout)=uob                  ! u obs
+- cdata_all(7,iout)=vob                  ! v obs 
+- cdata_all(8,iout)=rstation_id          ! station id 
+- cdata_all(9,iout)=t4dv                 ! time
+- cdata_all(10,iout)=nc                  ! index of type in convinfo file
+- cdata_all(11,iout)=qifn +1000.0_r_kind*qify   ! quality mark infor  
+- cdata_all(12,iout)=qm                  ! quality mark
+- cdata_all(13,iout)=obserr              ! original obs error
+- cdata_all(14,iout)=usage               ! usage parameter
+- cdata_all(15,iout)=idomsfc             ! dominate surface type
+- cdata_all(16,iout)=tsavg               ! skin temperature
+- cdata_all(17,iout)=ff10                ! 10 meter wind factor
+- cdata_all(18,iout)=sfcr                ! surface roughness
+- cdata_all(19,iout)=dlon_earth_deg      ! earth relative longitude (degrees)
+- cdata_all(20,iout)=dlat_earth_deg      ! earth relative latitude (degrees)
+- cdata_all(21,iout)=zz                  ! terrain height at ob location
+- cdata_all(22,iout)=r_prvstg(1,1)       ! provider name
+- cdata_all(23,iout)=r_sprvstg(1,1)      ! subprovider name
+- cdata_all(25,iout)=var_jb              ! non linear qc parameter
