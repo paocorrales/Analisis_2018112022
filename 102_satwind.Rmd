@@ -155,3 +155,17 @@ diff[bottom_top %in% seq(20, 58, 2)] %>%
   facet_wrap(~bottom_top)
 ```
 
+### Diagfiles
+
+```{r}
+diag <- fread("/home/paola.corrales/comGSIv3.7_EnKFv1.3/examples/test/gsi_satwnd/results_conv_ges.2018112100") %>% 
+  .[, c("V2", "V4") := NULL]
+
+colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr")
+
+diag[type %between% c(240, 260)] %>% 
+  
+  .[, .N, by = .(type)]
+                   
+```
+
