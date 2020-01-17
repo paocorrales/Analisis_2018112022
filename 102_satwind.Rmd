@@ -34,6 +34,8 @@ En la [Tabla 18](https://www.emc.ncep.noaa.gov/mmb/data_processing/prepbufr.doc/
 - WDIR = Wind Direction (Degree True)
 - WSPD = Wind Speed (m/s)
 
+Mejor y con más detalle [Tabla b](https://www.nco.ncep.noaa.gov/sib/jeff/bufrtab_tableb.html)
+
 
 ### GSI
  
