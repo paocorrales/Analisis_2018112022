@@ -110,3 +110,48 @@ Notas:
 - cdata_all(22,iout)=r_prvstg(1,1)       ! provider name
 - cdata_all(23,iout)=r_sprvstg(1,1)      ! subprovider name
 - cdata_all(25,iout)=var_jb              ! non linear qc parameter
+
+### Comparación analisis con y sin satwnd
+
+Prueba de asimilación usando 3DVar para hacer un par de experimentos rápidos. 
+
+Fecha: 2018112100
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(data.table)
+library(metR)
+
+with_satwnd <- ReadNetCDF("u_satwind.nc", vars = c(u = "uvmet")) %>% 
+  .[, v := ReadNetCDF("v_satwind.nc", vars = c(v = "uvmet"), out = "vector")] %>% 
+  .[, t := ReadNetCDF("t_satwind.nc",  vars = c(t = "temp"), out = "vector")] %>% 
+  .[, exp := "with_satwnd"]
+
+no_satwnd <- ReadNetCDF("u_no_satwind.nc", vars = c(u = "uvmet")) %>% 
+  .[, v := ReadNetCDF("v_no_satwind.nc", vars = c(v = "uvmet"), out = "vector")] %>% 
+  .[, t := ReadNetCDF("t_no_satwind.nc",  vars = c(t = "temp"), out = "vector")] %>% 
+  .[, exp := "no_satwnd"]
+
+exp <- rbind(with_satwnd, no_satwnd)
+
+diff <- with_satwnd[no_satwnd, on = c("bottom_top", "south_north", "west_east")] %>% 
+  .[, ":="(u.diff = u - i.u,
+           v.diff = v - i.v,
+           t.diff = t - i.t)]
+```
+
+
+```{r}
+exp[bottom_top %in% seq(1, 60, 10)] %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_point(aes(color = u)) +
+  scale_color_divergent() +
+  facet_grid(exp~bottom_top)
+
+diff[bottom_top %in% seq(20, 58, 2)] %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_point(aes(color = u.diff)) +
+  scale_color_divergent() +
+  facet_wrap(~bottom_top)
+```
+
