@@ -5,6 +5,15 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(data.table)
+library(metR)
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
 ```
 
 ## bufr
@@ -118,10 +127,6 @@ Prueba de asimilación usando 3DVar para hacer un par de experimentos rápidos.
 Fecha: 2018112100
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-library(tidyverse)
-library(data.table)
-library(metR)
-
 with_satwnd <- ReadNetCDF("u_satwind.nc", vars = c(u = "uvmet")) %>% 
   .[, v := ReadNetCDF("v_satwind.nc", vars = c(v = "uvmet"), out = "vector")] %>% 
   .[, t := ReadNetCDF("t_satwind.nc",  vars = c(t = "temp"), out = "vector")] %>% 
@@ -164,8 +169,32 @@ diag <- fread("/home/paola.corrales/comGSIv3.7_EnKFv1.3/examples/test/gsi_satwnd
 colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr")
 
 diag[type %between% c(240, 260)] %>% 
-  
-  .[, .N, by = .(type)]
-                   
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = factor(type))) +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  facet_wrap(~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
+                                                             "1" = "asimilated"))) +
+  labs(color = "Source",
+       x = "lon") +
+  theme_minimal()
+
+N_obs <- diag[type %between% c(240, 260), .N, by = usage.flag] %>% 
+  .[, label := paste("N = ", N)] %>% 
+  .[, ":="(lon = 305.0,
+          pressure = 920)]
+
+diag[type %between% c(240, 260)] %>% 
+  ggplot(aes(ConvertLongitude(lon), pressure)) +
+  geom_point(aes(color = factor(type))) +
+  scale_y_level(name = "pressure level", breaks = c(1000, 900, 700, 500, 400, 300, 200, 100)) +
+  scale_x_longitude(breaks = seq(-75, -55, 5)) +
+  geom_label(data = N_obs, aes(x = ConvertLongitude(lon), y = pressure, label = label))  +
+  facet_wrap(~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
+                                                             "1" = "asimilated"))) +
+  labs(color = "Source",
+       x = "lon",
+       y = "pressure level") +
+  theme_minimal()
 ```
 
