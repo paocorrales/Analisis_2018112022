@@ -168,9 +168,34 @@ diag <- fread("/home/paola.corrales/comGSIv3.7_EnKFv1.3/examples/test/gsi_satwnd
 
 colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr")
 
-diag[type %between% c(240, 260)] %>% 
+diag <- diag[type %between% c(240, 260)] %>% 
+.[, sat_type := case_when(
+  type == 240 ~ "GOES SW winds",
+  type == 241 ~ "India",
+  type == 242 ~ "JMA Visible",
+  type == 243 ~ "EUMETSAT visible",
+  type == 244 ~ "AVHRR winds",
+  type == 245 ~ "GOES IR", 
+  type == 246 ~ "GOES WV cloud top", 
+  type == 247 ~ "GOES WV deep layer",
+  type == 250 ~ "JMA WV deep layer", 
+  type == 251 ~ "GOES visible", 
+  type == 252 ~ "JMA IR winds",
+  type == 253 ~ "EUMETSAT IR winds", 
+  type == 254 ~ "EUMETSAT WV deep layer winds",
+  type == 257 ~ "MODIS IR",
+  type == 258 ~ "MODIS WV cloud top",
+  type == 259 ~ "MODIS WV deep layer winds",
+  type == 260 ~ "VIIR IR winds")] %>% 
+  melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
+                       .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
+                       .[, variable := str_remove(variable, "2")] %>% 
+  pivot_wider(names_from = variable, values_from = value) %>% 
+                       setDT
+
+diag[var == "u"] %>% 
   ggplot(aes(ConvertLongitude(lon), lat)) +
-  geom_point(aes(color = factor(type))) +
+  geom_point(aes(color = sat_type)) +
   geom_mapa() +
   coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
   facet_wrap(~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
@@ -179,18 +204,45 @@ diag[type %between% c(240, 260)] %>%
        x = "lon") +
   theme_minimal()
 
-N_obs <- diag[type %between% c(240, 260), .N, by = usage.flag] %>% 
+N_obs <- diag[var == "u", .N, by = .(usage.flag, var)] %>% 
   .[, label := paste("N = ", N)] %>% 
-  .[, ":="(lon = 305.0,
+  .[, ":="(lon = 302.0,
           pressure = 920)]
 
-diag[type %between% c(240, 260)] %>% 
+diag[var == "u"] %>% 
   ggplot(aes(ConvertLongitude(lon), pressure)) +
-  geom_point(aes(color = factor(type))) +
+  geom_point(aes(color = sat_type)) +
   scale_y_level(name = "pressure level", breaks = c(1000, 900, 700, 500, 400, 300, 200, 100)) +
   scale_x_longitude(breaks = seq(-75, -55, 5)) +
   geom_label(data = N_obs, aes(x = ConvertLongitude(lon), y = pressure, label = label))  +
-  facet_wrap(~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
+  facet_grid(var~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
+                                                             "1" = "asimilated"))) +
+  labs(color = "Source",
+       x = "lon",
+       y = "pressure level") +
+  theme_minimal()
+```
+
+```{r}
+diag %>% 
+  ggplot((aes(ConvertLongitude(lon), lat))) +
+  geom_point(aes(color = obs)) +
+  scale_color_divergent() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  facet_grid(var~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
+                                                             "1" = "asimilated"))) +
+  theme_minimal()
+
+
+diag[var == "u"] %>% 
+  ggplot(aes(ConvertLongitude(lon), pressure)) +
+  geom_point(aes(color = obs)) +
+  scale_color_divergent() +
+  scale_y_level(name = "pressure level", breaks = c(1000, 900, 700, 500, 400, 300, 200, 100)) +
+  scale_x_longitude(breaks = seq(-75, -55, 5)) +
+  geom_label(data = N_obs, aes(x = ConvertLongitude(lon), y = pressure, label = label))  +
+  facet_grid(var~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
                                                              "1" = "asimilated"))) +
   labs(color = "Source",
        x = "lon",
