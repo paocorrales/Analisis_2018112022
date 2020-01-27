@@ -204,6 +204,14 @@ diag[var == "u"] %>%
        x = "lon") +
   theme_minimal()
 
+```
+Comparando la distribución espacial de las observaciones rechazadas y asimiladas, no se ve gran diferencia. Lo único más notable es que todas las observaciones de EUMESAT son rechazadas, no queda claro si esto se debe a una casualidad (justo en este tipo estas observaciones eran de baja calidad o estaban muy lejos del guess) o si es algo definido en el código de GSI. 
+
+Revisando el código (`read_satwnd.f90`) parece que los "WV deep layer" se usan para monitoreo. También dice: "reject data zenith angle >68.0 degree", habría que ver el ángulo zenital de estas observaciones. A simple vista hay muchas observaciones con un ángulo zenital menor a 68 grados así que esta no sería la causa para recharzar todas las observaciones. 
+
+Es notorio que el error de las observaciones rechazadas en la mayoría de los casos es `Inf`. 
+
+```{r}
 N_obs <- diag[var == "u", .N, by = .(usage.flag, var)] %>% 
   .[, label := paste("N = ", N)] %>% 
   .[, ":="(lon = 302.0,
@@ -248,5 +256,17 @@ diag[var == "u"] %>%
        x = "lon",
        y = "pressure level") +
   theme_minimal()
+```
+
+```{r}
+diag[usage.flag == -1 & rerr < 10000] %>% 
+
+  ggplot(aes(rerr)) +
+  geom_density() +
+  geom_rug()
+
+diag[is.finite(rerr)] %>% 
+  ggplot(aes(factor(usage.flag), log(rerr))) +
+  geom_boxplot()
 ```
 
