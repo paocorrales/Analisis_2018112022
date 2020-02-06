@@ -6,6 +6,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(lubridate)
 library(data.table)
 library(metR)
 
@@ -178,6 +179,8 @@ diag <- diag[type %between% c(240, 260)] %>%
   type == 245 ~ "GOES IR", 
   type == 246 ~ "GOES WV cloud top", 
   type == 247 ~ "GOES WV deep layer",
+  type == 248 ~ "GOES cloud top (sounder)",
+  type == 249 ~ "GOES deep layer (sounder)",
   type == 250 ~ "JMA WV deep layer", 
   type == 251 ~ "GOES visible", 
   type == 252 ~ "JMA IR winds",
@@ -245,7 +248,7 @@ diag %>%
 
 diag[var == "u"] %>% 
   ggplot(aes(ConvertLongitude(lon), pressure)) +
-  geom_point(aes(color = obs)) +
+  geom_point(aes(color = obs.guess)) +
   scale_color_divergent() +
   scale_y_level(name = "pressure level", breaks = c(1000, 900, 700, 500, 400, 300, 200, 100)) +
   scale_x_longitude(breaks = seq(-75, -55, 5)) +
@@ -258,13 +261,48 @@ diag[var == "u"] %>%
   theme_minimal()
 ```
 
+## Experimento de asimilación.
+
+10 miembros y 24 ciclos de asimilación arrancando a las 18 UTC del 20181120
+
 ```{r}
-diag <- fread("/home/paola.corrales/comGSIv3.7_EnKFv1.3/examples/test/gsi_satwnd_01/results_conv_ges.2018112023") %>% 
+files <- Sys.glob("analisis/diagfiles/E2/asim_conv*")
+
+obs <- purrr::map(files, function(f) { 
+  diag <- fread(f) %>% 
+    .[, exp := basename(dirname(f))] %>% 
+    .[, date := ymd_hms(stringr::str_extract(f, "\\d{14}"))] %>% 
+    .[]
+  }) %>% 
+  rbindlist() %>% 
   .[, c("V2", "V4") := NULL]
 
-colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr")
+colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "date")
 
-diag <- diag[type %between% c(240, 260)] %>% 
+obs[, .N, by = .(exp, var, usage.flag)] %>% 
+  dcast(exp + usage.flag ~ var, value.var = "N") %>% 
+  knitr::kable()
+```
+
+```{r}
+obs[, .N, by = .(var, date, exp, usage.flag)] %>% 
+  ggplot(aes(date, N)) +
+  geom_line(aes(color = var, linetype = factor(usage.flag))) +
+  scale_linetype_manual(values = c("-1" = 2, "1" = 1)) +
+  labs(title = "Cantidad de observaciones asimiladas y rechazadas según variable",
+       linetype = "Uso", 
+       color = "experimento") +
+  theme_minimal()
+```
+
+Por defecto las observaciones tipo 251 = GOES Visible no se asimilan porque no tienen error definido. Algunas otras observaciones tienen defidino un error para algunos niveles y otros no. Esto permite controlar a que niveles se asimilacada observación, lo complicado sería redefinir estos errores para asimilar más o menos oservaciones sin conocer mejor el tipo de observación. 
+
+Respecto a la tabla *convinfo*, algunos tipos de observación tienen subtipos (algunos se asimilan, otros no) y no logro encontrar que significan canda uno. 
+
+```{r}
+obs[var == "uv", .N, by = .(var, type, usage.flag)] %>% dcast(usage.flag ~type)
+
+obs <- obs[type %between% c(240, 260)] %>% 
 .[, sat_type := case_when(
   type == 240 ~ "GOES SW winds",
   type == 241 ~ "India",
@@ -274,6 +312,8 @@ diag <- diag[type %between% c(240, 260)] %>%
   type == 245 ~ "GOES IR", 
   type == 246 ~ "GOES WV cloud top", 
   type == 247 ~ "GOES WV deep layer",
+  type == 248 ~ "GOES cloud top (sounder)",
+  type == 249 ~ "GOES deep layer (sounder)",
   type == 250 ~ "JMA WV deep layer", 
   type == 251 ~ "GOES visible", 
   type == 252 ~ "JMA IR winds",
@@ -282,26 +322,17 @@ diag <- diag[type %between% c(240, 260)] %>%
   type == 257 ~ "MODIS IR",
   type == 258 ~ "MODIS WV cloud top",
   type == 259 ~ "MODIS WV deep layer winds",
-  type == 260 ~ "VIIR IR winds")] %>% 
-  melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
-                       .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
-                       .[, variable := str_remove(variable, "2")] %>% 
-  pivot_wider(names_from = variable, values_from = value) %>% 
-                       setDT
+  type == 260 ~ "VIIR IR winds")]
 
-diag[var == "u"] %>% 
-  ggplot(aes(ConvertLongitude(lon), lat)) +
-  geom_point(aes(color = sat_type)) +
-  geom_mapa() +
-  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
-  facet_wrap(~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
-                                                             "1" = "asimilated"))) +
-  labs(color = "Source",
-       x = "lon") +
+obs[type %between% c(240, 260), .N, by = .(var,type, sat_type, date, exp, usage.flag)] %>% 
+  ggplot(aes(date, N)) +
+  geom_line(aes(color = factor(type))) +
+  geom_point(aes(color = factor(type))) +
+  facet_wrap(usage.flag ~ exp, scales = "free") +
+  labs(title = "Observaciones de viento",
+       linetype = "Uso", 
+       color = "type") +
   theme_minimal()
-
-diag %>% 
-  ggplot(aes(dhr)) +
-  geom_density()
 ```
+
 
