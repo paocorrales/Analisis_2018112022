@@ -266,7 +266,7 @@ diag[var == "u"] %>%
 10 miembros y 24 ciclos de asimilación arrancando a las 18 UTC del 20181120
 
 ```{r}
-files <- Sys.glob("analisis/diagfiles/E2/asim_conv*")
+files <- Sys.glob("analisis/diagfiles/E1/asim_conv*")
 
 obs <- purrr::map(files, function(f) { 
   diag <- fread(f) %>% 
@@ -297,10 +297,12 @@ obs[, .N, by = .(var, date, exp, usage.flag)] %>%
 
 Por defecto las observaciones tipo 251 = GOES Visible no se asimilan porque no tienen error definido. Algunas otras observaciones tienen defidino un error para algunos niveles y otros no. Esto permite controlar a que niveles se asimilacada observación, lo complicado sería redefinir estos errores para asimilar más o menos oservaciones sin conocer mejor el tipo de observación. 
 
-Respecto a la tabla *convinfo*, algunos tipos de observación tienen subtipos (algunos se asimilan, otros no) y no logro encontrar que significan canda uno. 
+Respecto a la tabla *convinfo*, algunos tipos de observación tienen subtipos (algunos se asimilan, otros no) y no logro encontrar que significan canda uno. El gross check para estas observaciones es muy estricto con un umbral de entre 1.3 y 2.5 m/s (para comparar el umbral de las observaciones de estaciones de superficie es 6 m/s).
 
 ```{r}
-obs[var == "uv", .N, by = .(var, type, usage.flag)] %>% dcast(usage.flag ~type)
+obs[var == "uv", .N, by = .(var, type, usage.flag)] %>% 
+  dcast(usage.flag ~type, value.bar = "N") %>% 
+   knitr::kable()
 
 obs <- obs[type %between% c(240, 260)] %>% 
 .[, sat_type := case_when(
@@ -328,11 +330,72 @@ obs[type %between% c(240, 260), .N, by = .(var,type, sat_type, date, exp, usage.
   ggplot(aes(date, N)) +
   geom_line(aes(color = factor(type))) +
   geom_point(aes(color = factor(type))) +
-  facet_wrap(usage.flag ~ exp, scales = "free") +
+  facet_wrap(usage.flag ~ exp) +
   labs(title = "Observaciones de viento",
        linetype = "Uso", 
        color = "type") +
   theme_minimal()
 ```
 
+Intentando idenficar la causa de rechazo de las observaciones veo que:
+
+- En muchísimos casos el error de la observación está definido con `Inf`
+- En algunos casos el error es grande pero no muchos.
+- La distancia entre la observación y el guess es grande
+- En algunos casos la observación es muy distinta a las observaciones vecinas
+
+```{r}
+obs[, inf := !is.finite(rerr)] %>% 
+  .[, .N, by = .(type, usage.flag, inf)] %>% 
+  dcast(usage.flag + inf ~ type) %>% 
+  knitr::kable()
+```
+
+
+## RCRV
+
+```{r message=FALSE, warning=FALSE}
+source("help_functions.R")
+path <- "analisis/diagfiles/E1/asim_conv_2018112*"
+
+perfiles <- read_diag(path, variable = c("uv")) %>%
+  .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]
+
+RCRV <- get_RCRV(perfiles[type %between% c(240, 260)], tipo = c("perfil")) %>% 
+  .[, sat_type := case_when(
+  type == 240 ~ "GOES SW winds",
+  type == 241 ~ "India",
+  type == 242 ~ "JMA Visible",
+  type == 243 ~ "EUMETSAT visible",
+  type == 244 ~ "AVHRR winds",
+  type == 245 ~ "GOES IR", 
+  type == 246 ~ "GOES WV cloud top", 
+  type == 247 ~ "GOES WV deep layer",
+  type == 248 ~ "GOES cloud top (sounder)",
+  type == 249 ~ "GOES deep layer (sounder)",
+  type == 250 ~ "JMA WV deep layer", 
+  type == 251 ~ "GOES visible", 
+  type == 252 ~ "JMA IR winds",
+  type == 253 ~ "EUMETSAT IR winds", 
+  type == 254 ~ "EUMETSAT WV deep layer winds",
+  type == 257 ~ "MODIS IR",
+  type == 258 ~ "MODIS WV cloud top",
+  type == 259 ~ "MODIS WV deep layer winds",
+  type == 260 ~ "VIIR IR winds")]
+
+RCRV %>% 
+  melt(measure.vars = c("mean.y", "sd.y")) %>% 
+  ggplot(aes(nivel.error, value)) +
+  geom_hline(yintercept = c(0, 1), color = "darkgrey") +
+  geom_line(aes(color = factor(sat_type), linetype = variable)) +
+  scale_color_brewer(palette = "Set1") +
+  scale_x_level() +
+  coord_flip() +
+  facet_wrap(~ var, scales = "free_x") +
+  labs(title = "Reduced Centered Random Variable",
+       subtitle = "Satellite wind",
+       linetype = "",
+       color = "Obs type") +
+  theme_minimal()
+```
 

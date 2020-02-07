@@ -39,7 +39,7 @@ $$CR = \frac{\sigma^2_{vr} + \left \langle \frac{1}{N-1}\sum_{n=1}^{N}[H(\mathbf
 
 El $CR$ debería ser cercano a 1, un $CR < 1$ indica que el ensamble tiene un spread insuficiente y $CR > 1$ podría indicar una sobreestimación de los errores de las observaciones. 
 
-### Implementación
+### Implementacion
 
 ```{r include=FALSE}
 # path <- "analisis/diagfiles/E5/asim_conv_2018112*"
