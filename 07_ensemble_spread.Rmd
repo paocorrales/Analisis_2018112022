@@ -10,6 +10,12 @@ library(lubridate)
 library(data.table)
 library(metR)
 source("help_functions.R")
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
 ```
 
 ## Consistency ratio
@@ -44,7 +50,7 @@ El $CR$ debería ser cercano a 1, un $CR < 1$ indica que el ensamble tiene un sp
 ```{r include=FALSE}
 # path <- "analisis/diagfiles/E5/asim_conv_2018112*"
 # 
-# perfiles <- read_diag(path, variable = c("uv", "t")) %>% 
+# perfiles <- read_diag(path, variable = c("uv", "t")) %>%
 #   .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]
 # 
 # cr <- get_cr(perfiles[type %in% c(181, 187, 281, 287)], tipo = c("superficie", "temporal"))
@@ -100,6 +106,63 @@ fread("cr_uvt_perfil.csv") %>%
 ```
 
 Viendo esto me pregunto si los errores para cada tipo de observación están correctamente definidos. *Supuestamente* al estar usando GSI regional, el sistema ignora el error de la observación que lee del prepbufr y usa los errores codificados en la tabla **errtable** que son los que usé para el cálculo del CR. 
+
+Análisis por cajas
+
+```{r}
+# cr_box <- perfiles %>%  
+#   .[, ":="(lon.box = cut_round(lon, breaks = seq(284, 309, 5)),
+#            lat.box = cut_round(lat, breaks = seq(-42, -17, 5)))] %>% 
+#   .[usage.flag == 1 & !is.na(obs)] %>% 
+#   .[, guess := obs - obs.guess] %>% 
+#   .[, guess.mean := mean(guess), by = .(id, date)] %>% 
+#   .[, var.ens := var(guess, na.rm = TRUE), by = .(id, date)] %>% 
+#   .[, d := obs - guess.mean] %>% 
+#   .[, d.vol := mean(d), by = .(var, type, lon.box, lat.box)] %>% 
+#   .[, rerr.box := mean(rerr), by = .(var, type, lat.box, lon.box)] %>% 
+#   .[, .(rmse = mean((d - d.vol)^2, na.rm = TRUE),
+#         spread = error[1]^2 + mean(var.ens, na.rm = TRUE),
+#         count = .N), by = .(var, type, lat.box, lon.box)] %>% 
+#   .[, cr := spread/rmse] 
+  
+# cr_evol <- perfiles %>%  
+#   .[, ":="(lon.box = cut_round(lon, breaks = seq(284, 309, 5)),
+#            lat.box = cut_round(lat, breaks = seq(-42, -17, 5)))] %>% 
+#   .[usage.flag == 1 & !is.na(obs) & type %in% c(181, 187, 281, 287)] %>% 
+#   .[, guess := obs - obs.guess] %>% 
+#   .[, guess.mean := mean(guess), by = .(id, date)] %>% 
+#   .[, var.ens := var(guess, na.rm = TRUE), by = .(id, date)] %>% 
+#   .[, d := obs - guess.mean] %>% 
+#   .[, d.vol := mean(d), by = .(var, type, date)] %>% 
+#   .[, rerr.box := mean(rerr, na.rm = TRUE), by = .(var, type, date)] %>% 
+#   .[, .(rmse = mean((d - d.vol)^2, na.rm = TRUE),
+#         spread = error[1]^2 + mean(var.ens, na.rm = TRUE),
+#         count = .N), by = .(var, type, date)] %>% 
+#   .[, cr := spread/rmse] 
+#   
+# cr_evol %>% 
+#     .[is.finite(cr) & count > 1000] %>% 
+#   ggplot(aes(date, spread)) +
+#   geom_hline(yintercept = 1, color = "darkgrey") +
+#   # geom_hline(yintercept = 0.00001, color = "darkgrey") +
+#   geom_line(aes(color = factor(type), group = factor(type))) +
+#   geom_point(aes(color = factor(type), size = count)) +
+#   scale_x_datetime(date_labels = "%H", date_breaks = "3 hours") +
+#   scale_y_log10() +
+#   facet_wrap(~var, scales = "free_x", ncol = 1) +
+#   labs(title = "Consistency ratio",
+#        subtitle = "Surface observations",
+#        x = "hour",
+#        color = "Type of obs") +
+#   theme_minimal()
+
+fread("uvt_cr_box.csv") %>% 
+  ggplot(aes(lon.box, lat.box)) +
+  geom_raster(aes(fill = cr)) +
+  scale_fill_viridis_c() +
+  facet_grid(.~var+type)
+```
+
 
 ## Reduced Centered Random Variable
 
@@ -166,6 +229,70 @@ fread("rcrv_uvt_perfil.csv") %>%
   theme_minimal()
   
 ```
+
+En cajas 
+
+```{r}
+# rcrv_box <- perfiles %>%
+#   .[, ":="(lon.box = cut_round(lon, breaks = seq(284, 309, 2.5)),
+#            lat.box = cut_round(lat, breaks = seq(-42, -17, 2.5)))] %>%
+#   .[usage.flag == 1 & !is.na(obs)] %>%
+#   .[, ":="(mean.guess = mean(obs - obs.guess, na.rm = TRUE),
+#            sd.guess = sd(obs - obs.guess, na.rm = TRUE)), by = .(id, date)] %>%
+#   .[, y := (obs - mean.guess)/sqrt(sd.guess^2 + error^2), by = .(id, date)] %>%
+#   .[, .(mean.y = mean(y, na.rm = TRUE),
+#         sd.y = sd(y, na.rm = TRUE)), by = .(var, type, lat.box, lon.box)]
+# fwrite(rcrv_box, "uvt_rcrv_box.csv")
+
+fread("uvt_rcrv_box.csv") %>% 
+  .[var %in% c("u", "v")] %>% 
+  .[, type.obs := type] %>% 
+  ggplot(aes(ConvertLongitude(lon.box), lat.box)) +
+  geom_raster(aes(fill = sd.y)) +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  scale_fill_viridis_c(breaks = seq(0, 4, 0.5),
+                       limits = c(0, 4),
+                       direction = -1,
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 20,
+                                                barheight = 0.8)) +
+  facet_grid(var~type.obs) +
+  labs(title = "RCRV",
+       subtitle = "Calculated over 2.5ºx2.5º boxes",
+       x = "",
+       y = "",
+       fill = "") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+
+fread("uvt_rcrv_box.csv") %>% 
+  .[var %in% c("t")] %>% 
+  .[, type.obs := type] %>% 
+  ggplot(aes(ConvertLongitude(lon.box), lat.box)) +
+  geom_raster(aes(fill = sd.y)) +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  scale_fill_viridis_c(breaks = seq(0, 5, 0.5),
+                       limits = c(0, 5),
+                       direction = -1,
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 20,
+                                                barheight = 0.8)) +
+  facet_grid(var~type.obs) +
+  labs(title = "RCRV",
+       subtitle = "Calculated over 2.5ºx2.5º boxes",
+       x = "",
+       y = "",
+       fill = "") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
 
 ## Conclusión...
 
