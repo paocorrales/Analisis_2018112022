@@ -335,6 +335,11 @@ obs[type %between% c(240, 260), .N, by = .(var,type, sat_type, date, exp, usage.
        linetype = "Uso", 
        color = "type") +
   theme_minimal()
+
+obs[type %between% c(240, 260) & is.finite(rerr)] %>% 
+  ggplot(aes(obs.guess)) +
+  geom_density() +
+  facet_grid(usage.flag ~ type)
 ```
 
 Intentando idenficar la causa de rechazo de las observaciones veo que:
