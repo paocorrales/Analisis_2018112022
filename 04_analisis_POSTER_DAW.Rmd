@@ -24,7 +24,7 @@ geom_mapa <- function() {
 #                     vars = c(lon = "XLONG", lat = "XLAT")) %>% 
 #   .[, Time := NULL]
 
-# ReadNetCDF("E3/ANA/20181122060000/analysis.ensmean", vars = c("P", "PB")) %>% 
+# ReadNetCDF("E6/ANA/20181122060000/analysis.ensmean", vars = c("P", "PB")) %>% 
 #   .[, P := (P + PB)/100] %>% 
 #   .[P %between% c(898, 902)] %>% 
 #   .[] %>% 
@@ -78,7 +78,7 @@ cape %>%
        subtitle = "at 32ºS") +
   scale_x_longitude(ticks = 2.5, expand = c(0,0)) +
   scale_y_datetime("Time", date_labels = "%b-%d", expand = c(0,0)) +
-  facet_wrap(~exp, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV", E5 = "CONV+AUT OK")), ncol = 1) +
+  facet_wrap(~exp, labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND")), ncol = 1) +
   theme_minimal(base_size = 26) +
   theme(legend.position = "bottom", 
         panel.ontop = TRUE,
@@ -115,7 +115,7 @@ cape[date %in% ymd_h(c("2018-11-22 00",
                                                 barheight = 0.8)) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
-  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV", E5 = "CONV+AUT OK"))) +
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   labs(title = "MCAPE",
        x = "Longitude",
@@ -135,10 +135,10 @@ ggsave("fig/cape_esp.png", dpi = 150, width = unit(15, "cm"), height = unit(22, 
 Perfiles de temperatura y humedad promediados en todo el dominio
 
 ```{r}
-perfil_E3 <- fread("analisis/perfil_T_Q_ana_E3.csv") %>% 
+perfil_E6 <- fread("analisis/perfil_T_Q_ana_E6.csv") %>% 
   .[, date := ymd_hms(date)] 
 
-perfil_lev_E3 <- fread("analisis/perfil_lev_T_Q_ana_E3.csv") %>% 
+perfil_lev_E6 <- fread("analisis/perfil_lev_T_Q_ana_E6.csv") %>% 
   .[, date := ymd_hms(date)] 
 
 perfil_E4 <- fread("analisis/perfil_T_Q_ana_E4.csv") %>% 
@@ -206,8 +206,8 @@ ggsave("fig/humidity_diff.png", dpi = 150, width = unit(12, "cm"), height = unit
 ## Circulación
 
 ```{r}
-fcsts <- expand_grid(fcsts = c("20181121210000", "20181122000000", "20181122030000", "20181122060000"),
-                     exp = c("E3", "E4", "E5"))
+fcsts <- expand_grid(fcsts = c("20181122000000", "20181122060000"),
+                     exp = c("E4", "E5", "E6"))
 
 temp_spd <- lapply(seq_len(nrow(fcsts)), function(f) {
   
@@ -228,7 +228,7 @@ mean_temp_spd <- temp_spd[bottom_top <= 7, .(t = mean(t), u = u[bottom_top == 1]
 diff_temp_spd <- copy(mean_temp_spd) %>% 
   melt(id.vars = c("lon", "lat", "date", "exp"), measure.vars = c("t", "u", "v")) %>% 
   dcast(lon + lat + date + variable ~ exp, value.var = "value") %>% 
-  .[, diff_old := E3 - E4] %>% 
+  .[, diff_old := E6 - E4] %>% 
   .[, diff_new := E5 - E4]
 ```
 
@@ -250,7 +250,7 @@ mean_temp_spd %>%
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   geom_vector(aes(dx = u, dy = v), data = function(x) x[is.cross(south_north, west_east, 4)]) +
   scale_mag() +
-  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV", E5 = "CONV+AUT OK"))) +
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   labs(title = "Low level temperature",
@@ -281,7 +281,7 @@ mean_temp_spd %>%
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   geom_vector(aes(dx = u, dy = v), data = function(x) x[is.cross(south_north, west_east, 4)]) +
   scale_mag() +
-  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV",  E5 = "CONV+AUT OK"))) +
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   labs(title = "CONV+AUT",
@@ -351,7 +351,7 @@ q[bottom_top <= 7, .(q = mean(q)), by = .(south_north, west_east, date, exp)] %>
                                                 barheight = 0.8)) +
   geom_sf(data = map, inherit.aes = FALSE, color = "black", fill = NA, size = 0.2) +
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
-  facet_grid(exp ~ date, labeller = labeller(exp = c(E3 = "CONV+AUT", E4 = "CONV", E5 = "CONV+AUT OK"))) +
+  facet_grid(exp ~ date, labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   labs(title = "Low level humidity (g/Kg)",

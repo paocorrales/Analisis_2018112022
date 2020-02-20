@@ -25,7 +25,8 @@ geom_mapa <- function() {
 
 exp <- c(E3 = "CONV+AUT",
          E4 = "CONV",
-         E5 = "CONV+AUT OK")
+         E5 = "AUT",
+         E6 = "SATWND")
 
 init_fcst = c("2018-11-22 00:00:00" = "Init time = 00Z",
               "2018-11-22 06:00:00" = "Init time = 06Z")
@@ -53,7 +54,7 @@ Se usaron las parametrizaciones YSU y KF y todos los pronósticos corrieron hast
 ## "Validación con datos de precipitación IMERG
 
 ```{r}
-files <- Sys.glob("../IMERG_20181122/*")
+files <- Sys.glob("../datosmunin2/IMERG_20181122/*")
 
 pp_imerg <- lapply(files, function(f) {
   date <- str_extract(str_extract(f, "\\d{8}-"), "\\d{8}")
@@ -76,7 +77,7 @@ pp_imerg_acum <- pp_imerg[start_date %between% c(as_datetime("2018-11-22 06:00:0
 ```{r}
 # fcsts <- expand_grid(fcsts = c("20181121210000", "20181122000000", "20181122030000", "20181122060000"),
 fcsts <- expand_grid(fcsts = c("20181122000000", "20181122060000"),                     
-                     exp = c("E3", "E4", "E5"))
+                     exp = c("E4", "E5", "E6"))
 
 pp <- lapply(seq_len(nrow(fcsts)), function(f) {
   
@@ -152,7 +153,7 @@ pp_imerg_hr <- copy(pp_imerg)[, `:=`(hora = hour(start_date),
   .[, date := make_datetime(2018, 11, dia, hora)] 
 
 fcsts <- expand_grid(fcsts = c("20181122000000", "20181122060000"),
-                     exp = c("E3", "E4", "E5"))
+                     exp = c("E4", "E5", "E6"))
 
 pp_hov <- lapply(seq_len(nrow(fcsts)), function(f) {
   
