@@ -1,0 +1,192 @@
+---
+title: "Diferencias entre experimentos"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      cache = TRUE)
+library(tidyverse)
+library(lubridate)
+library(data.table)
+library(metR)
+library(reticulate)
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+
+coord <- ReadNetCDF("analisis/mucape/mcape_ana_E3_20181120180000.nc", vars = c(lon = "XLONG")) %>% 
+  .[, lat := ReadNetCDF("analisis/mucape/mcape_ana_E3_20181120180000.nc", vars = c(lat = "XLAT"))$lat]
+
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
+
+exp <- c(E3 = "CONV+AUT",
+         E4 = "CONV",
+         E5 = "AUT",
+         E6 = "SATWND")
+
+init_fcst = c("2018-11-22 00:00:00" = "Init time = 00Z",
+              "2018-11-22 06:00:00" = "Init time = 06Z")
+```
+
+## precipitación
+
+```{r}
+files <- Sys.glob("../datosmunin2/IMERG_20181122/*")
+
+pp_imerg <- lapply(files, function(f) {
+  date <- str_extract(str_extract(f, "\\d{8}-"), "\\d{8}")
+  start <- str_extract(str_extract(f, "S\\d{6}"), "\\d{6}")
+  end <- str_extract(str_extract(f, "E\\d{6}"), "\\d{6}")
+  
+  pp <- ReadNetCDF(f, vars = c(pp = "Grid/precipitationCal"), subset = list("Grid/lon" = -80:-50, 
+                                                                            "Grid/lat" = -45:-15)) %>% 
+    .[, start_date := ymd_hms(paste(date, start))] %>% 
+    .[, end_date := ymd_hms(paste(date, end))] %>% 
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  setnames(c("Grid/lon", "Grid/lat"), c("lon", "lat"))
+
+pp_imerg_acum <- pp_imerg[start_date %between% c(as_datetime("2018-11-22 06:00:00"), as_datetime("2018-11-23 11:30:00")), 
+                          .(pp = sum(pp)), by = .(lon, lat)]
+```
+
+```{r}
+# fcsts <- expand_grid(fcsts = c("20181121210000", "20181122000000", "20181122030000", "20181122060000"),
+fcsts <- expand_grid(fcsts = c("20181122000000", "20181122060000"),                     
+                     exp = c("E4", "E5", "E6"))
+
+pp <- lapply(seq_len(nrow(fcsts)), function(f) {
+  
+  tmp <- ReadNetCDF(paste0("analisis/pp_acum_", fcsts[f, 2], "_fcst", fcsts[f, 1], ".nc"), vars = c(pp = "__xarray_dataarray_variable__",
+                                                                                                    lon = "XLONG",
+                                                                                                    lat = "XLAT")) %>% 
+    .[, init_date :=  ymd_hms(fcsts[f, 1])] %>% 
+    .[, exp := fcsts[f, 2]] %>%  
+    .[]
+}) %>% 
+  rbindlist()
+
+pp_inter <- pp[, interp::interp(lon, lat, pp, output = "points", xo = pp_imerg_acum$lon, yo = pp_imerg_acum$lat), 
+               by = .(init_date, exp)] %>% 
+  setnames(c("x", "y", "z"), c("lon", "lat", "pp"))
+```
+
+```{r, fig.height=12, dpi=300}
+pp_inter %>% 
+  .[, init_date := factor(init_date)] %>% 
+  # .[init_date == unique(init_date)[2] | init_date == unique(init_date)[4]] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_contour_fill(aes(z = pp), breaks = seq(10, 300, 50), na.fill = 0) +
+  scale_fill_gradient("FCST", low  = "white", high = "black",
+                       # limits = c(0, 350),
+                       oob = scales::squish,
+                       breaks = seq(0, 300, 50),
+                       guide = guide_colorstrip(barwidth = 7,
+                                                barheight = 0.7)) +
+  geom_contour(data = pp_imerg_acum, aes(z = pp, color = ..level..), 
+               breaks = seq(0, 300, 50),
+               size = 1) +
+  scale_color_viridis_c("IMERG", direction = -1,
+                        breaks = seq(0, 300, 50),
+                        guide = guide_colorstrip(inside = TRUE,
+                                                 barwidth = 7,
+                                                barheight = 0.8)) +
+  geom_mapa() +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  facet_grid(exp ~ init_date, labeller = labeller(exp = exp,
+                                                  init_date = init_fcst)) +
+  labs(title = "Accumulated precipitation",
+       subtitle = "11/22 06Z to 11/23 12Z",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.grid = element_line(linetype = 3))
+```
+La diferencia entre los campos de precipitación acumulada entre las 06Z del 22/11 y las 12Z del 23/11 de los distintos experimentos da cuenta del impacto de los distintos set de observaciones. En todos los casos se resta el supuesto "bueno" con el supuesto "malo":
+
+- SATWND_AUT --> impacto de observaciones de viento derivadas de satleíte.
+- SATWND_CONV --> impacto de observaciones de viento derivadas de satleíte y estaciones automáticas en conjunto.
+- AUT_CONV --> impacto de observaciones de estaciones automáticas.
+
+El "control" corresponde al experimento CONV donde solo  se asimilaron las observaciones del prepBUFR original. Valores positivos indican las observaciones nuevas generam mayor precipitación.
+
+Las mayores diferencias se observan en SATWND_CONV y AUT_CONV mientras que SAT_AUT muestra magnitudes menores. Esto muestra que el impacto de las observaciones de estaciones automáticas es mucho mayor en comparación con los vientos derivados de satélite, al menos en cuanto a la precipitación acumulada. También es interesante ver que **en promedio** el efecto del viento derivado de satélite tiene signo contrario respecto del efecto de las observaciones de estaciones automáticas. 
+
+```{r, fig.height=5, dpi=300}
+dcast(pp_inter, init_date + lon + lat ~ exp, value.var = "pp") %>% 
+  .[, ":="(AUT_CONV = E5 - E4,
+           SATWND_AUT = E6 - E5,
+           SATWND_CONV = E6 - E4)] %>% 
+  melt(id.vars = c("init_date", "lon", "lat"), 
+       measure.vars = c("SATWND_AUT", "SATWND_CONV", "AUT_CONV"),
+       value.name  = "pp") %>% 
+  .[!is.na(pp) & init_date == unique(init_date)[2]] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = pp)) +
+  scale_color_divergent(breaks = seq(-200, 200, 50),
+                        guide = guide_colorstrip(inside = TRUE,
+                                                 barwidth = 20,
+                                                barheight = 0.8)) +
+  geom_mapa() +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  labs(title = "Diferencia entre experimentos",
+       subtitle = "bueno - malo",
+       color = "Diferencia\nprecipitación\nacumulada") +
+  facet_wrap(~variable) +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
+Al comparar cada experimento individualmente con las observaciones (IMERG), los campos de diferencias experimento -  IMERG indican que el pronóstico subestimó la precipitacón (valores negativos) o la sobrestimó (valore positivos). Las diferencias sn un poco difíciles de comparar sobre todo para AUT y SATWND ya que son bastante parecidas. Entre CONV y los otros dos si se nota claramente como hay una menor subestimación de la precipitación pero en algunas regiones empieza a sobreestimar.
+
+No es del todo útil pero si calculamos el promedio de cada uno de los gráficos y teniendo en si la diferencia es cero entonces el pronóstico es perfecto, SATWND tiene el promedio más cercano a cero. Esto no significa necesariamente que sea el mejor, es posible que simplemente esté compesando entre positivos y negativos. Al calcular el rmse igualmente SATWND gana por un poquitito.
+
+```{r, fig.height=5, dpi=300}
+pp_inter[init_date == unique(init_date)[2]] %>% 
+  dcast(init_date + lon + lat ~ exp, value.var = "pp") %>% 
+  pp_imerg_acum[., on = c("lon", "lat")] %>% 
+  .[, ":="(CONV = E4 - pp,
+           AUT = E5 - pp,
+           SATWND = E6 - pp)] %>% 
+  melt(id.vars = c("init_date", "lon", "lat"), 
+       measure.vars = c("CONV", "AUT", "SATWND"),
+       value.name  = "pp") %>% 
+  .[!is.na(pp)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = pp), size = 0.7) +
+  scale_color_divergent(breaks = seq(-200, 200, 50),
+                        guide = guide_colorstrip(inside = TRUE,
+                                                 barwidth = 20,
+                                                barheight = 0.8)) +
+  geom_mapa() +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  labs(title = "Diferencia entre experimentos y observaciones",
+       subtitle = "experimento - IMERG",
+       color = "Diferencia\nprecipitación\nacumulada") +
+  facet_wrap(~variable) +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+  
+
+pp_inter[init_date == unique(init_date)[2]] %>% 
+  dcast(init_date + lon + lat ~ exp, value.var = "pp") %>% 
+  pp_imerg_acum[., on = c("lon", "lat")] %>% 
+  .[, ":="(CONV = E4 - pp,
+           AUT = E5 - pp,
+           SATWND = E6 - pp)] %>% 
+  melt(id.vars = c("init_date", "lon", "lat"), 
+       measure.vars = c("CONV", "AUT", "SATWND"),
+       value.name  = "pp") %>% 
+  .[, .(promedio = mean(pp, na.rm = TRUE),
+        rmse =  sqrt(mean(pp^2, na.rm = TRUE))), by = .(variable)] %>% 
+  knitr::kable()
+```
+
