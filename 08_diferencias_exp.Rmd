@@ -81,11 +81,11 @@ pp_inter %>%
   ggplot(aes(lon, lat)) +
   geom_contour_fill(aes(z = pp), breaks = seq(10, 300, 50), na.fill = 0) +
   scale_fill_gradient("FCST", low  = "white", high = "black",
-                       # limits = c(0, 350),
-                       oob = scales::squish,
-                       breaks = seq(0, 300, 50),
-                       guide = guide_colorstrip(barwidth = 7,
-                                                barheight = 0.7)) +
+                      # limits = c(0, 350),
+                      oob = scales::squish,
+                      breaks = seq(0, 300, 50),
+                      guide = guide_colorstrip(barwidth = 7,
+                                               barheight = 0.7)) +
   geom_contour(data = pp_imerg_acum, aes(z = pp, color = ..level..), 
                breaks = seq(0, 300, 50),
                size = 1) +
@@ -93,7 +93,7 @@ pp_inter %>%
                         breaks = seq(0, 300, 50),
                         guide = guide_colorstrip(inside = TRUE,
                                                  barwidth = 7,
-                                                barheight = 0.8)) +
+                                                 barheight = 0.8)) +
   geom_mapa() +
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   facet_grid(exp ~ init_date, labeller = labeller(exp = exp,
@@ -130,7 +130,7 @@ dcast(pp_inter, init_date + lon + lat ~ exp, value.var = "pp") %>%
   scale_color_divergent(breaks = seq(-200, 200, 50),
                         guide = guide_colorstrip(inside = TRUE,
                                                  barwidth = 20,
-                                                barheight = 0.8)) +
+                                                 barheight = 0.8)) +
   geom_mapa() +
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   labs(title = "Diferencia entre experimentos",
@@ -163,7 +163,7 @@ pp_inter[init_date == unique(init_date)[2]] %>%
   scale_color_divergent(breaks = seq(-200, 200, 50),
                         guide = guide_colorstrip(inside = TRUE,
                                                  barwidth = 20,
-                                                barheight = 0.8)) +
+                                                 barheight = 0.8)) +
   geom_mapa() +
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   labs(title = "Diferencia entre experimentos y observaciones",
@@ -174,7 +174,7 @@ pp_inter[init_date == unique(init_date)[2]] %>%
   theme(legend.position = "bottom",
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3))
-  
+
 
 pp_inter[init_date == unique(init_date)[2]] %>% 
   dcast(init_date + lon + lat ~ exp, value.var = "pp") %>% 
@@ -188,5 +188,77 @@ pp_inter[init_date == unique(init_date)[2]] %>%
   .[, .(promedio = mean(pp, na.rm = TRUE),
         rmse =  sqrt(mean(pp^2, na.rm = TRUE))), by = .(variable)] %>% 
   knitr::kable()
+```
+
+### FSS 
+
+a) Convert to binary fields
+
+```{r}
+pp_imerg_acum
+unique(pp_inter$init_date)
+
+pp <- pp_inter[init_date == unique(init_date)[2]] %>% 
+  pp_imerg_acum[., on = c("lon", "lat")] %>% 
+  setnames(c("pp", "i.pp"), c("pp.obs", "pp.fcst")) %>% 
+  .[, exp := case_when(exp == "E4" ~ "CONV",
+                       exp == "E5" ~ "AUT",
+                       exp == "E6" ~ "SATWND")] %>% 
+  .[]
+
+FSS <- function(lon, lat, obs, fcst, q, w){
+  # browser()
+  dt <- data.table(obs.binary = obs,
+                   fcst.binary = fcst, 
+                   lon,
+                   lat)
+  
+  fcst <- dt %>%
+    dcast(lon ~ lat, value.var = "fcst.binary") %>%
+    .[, -1] %>% 
+    as.matrix()
+  
+  obs <- dt %>%
+    dcast(lon ~ lat, value.var = "obs.binary") %>%
+    .[, -1] %>% 
+    as.matrix()
+  
+  out <- purrr::map_dfr(q, function(q) {
+    # browser()
+    fcst_q <- fcst >= q
+    obs_q <- obs >= q
+    
+    list(fss = purrr::map_dbl(w, ~ verification::fss(obs_q, fcst_q, .x)),
+         w = w,
+         q = rep(q, length(w)))
+  })
+  
+  return(out)
+}
+
+q <- c(10, 25, 50, 100, 150, 200) #10mm, para arrancar pensanod en pp acumulada
+
+w <- seq(0, 50) #ancho de cada box w*2+1
+
+fss <- pp[, FSS(lon, lat, pp.obs, pp.fcst, q, w), by = .(exp)]
+
+fwrite(fss, file = "fss.csv")
+fss
+
+fss %>% 
+  ggplot(aes(w, q)) +
+  geom_contour_fill(aes(z = fss)) +
+  # geom_point(aes(color = fss)) +
+  scale_fill_viridis_c(name = "FSS") +
+  facet_wrap(~ exp)
+```
+
+```{r}
+fss %>% 
+  dcast(w + q ~ exp, value.var = "fss") %>% 
+  ggplot(aes(w, q)) +
+  geom_contour_fill(aes(z = SATWND - AUT)) +
+  # geom_point(aes(color = fss)) +
+  scale_fill_divergent("SATWND - AUT")
 ```
 
