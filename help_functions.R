@@ -206,3 +206,39 @@ cut_round <- function(x, breaks) {
   as.numeric(as.character(cuts)) 
 }
 
+
+# Wrap FSS ----------------------------------------------------------------
+
+# Usa la función fss del paquete verification pero previamente reorganiza las
+# variables en matrices. También puede iterar para distintos q (valor de pp) y
+# w (tamaño de la caja = w2+1)
+
+FSS <- function(lon, lat, obs, fcst, q, w){
+  # browser()
+  dt <- data.table(obs.binary = obs,
+                   fcst.binary = fcst, 
+                   lon,
+                   lat)
+  
+  fcst <- dt %>%
+    dcast(lon ~ lat, value.var = "fcst.binary") %>%
+    .[, -1] %>% 
+    as.matrix()
+  
+  obs <- dt %>%
+    dcast(lon ~ lat, value.var = "obs.binary") %>%
+    .[, -1] %>% 
+    as.matrix()
+  
+  out <- purrr::map_dfr(q, function(q) {
+    # browser()
+    fcst_q <- fcst >= q
+    obs_q <- obs >= q
+    
+    list(fss = purrr::map_dbl(w, ~ verification::fss(obs_q, fcst_q, .x)),
+         w = w,
+         q = rep(q, length(w)))
+  })
+  
+  return(out)
+}
