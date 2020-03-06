@@ -4,13 +4,18 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, 
-                      cache = TRUE)
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE
+)
 library(tidyverse)
 library(lubridate)
 library(data.table)
 library(metR)
 library(reticulate)
+library(patchwork)
 
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
 
@@ -192,43 +197,120 @@ pp_inter[init_date == unique(init_date)[2]] %>%
 
 ### FSS 
 
-a) Convert to binary fields
-
-```{r}
-pp_imerg_acum
-unique(pp_inter$init_date)
-
+FSS calculado para distintos umbrales de precipitación acumulada durante el periodo 22/11 06UTC y 23/11 12UTC y distintas escalas (cajas medidas en cantidad de puntos de grilla por lado). 
+```{r fig.height=3, dpi=100}
 pp <- pp_inter[init_date == unique(init_date)[2]] %>% 
   pp_imerg_acum[., on = c("lon", "lat")] %>% 
   setnames(c("pp", "i.pp"), c("pp.obs", "pp.fcst")) %>% 
   .[, exp := case_when(exp == "E4" ~ "CONV",
                        exp == "E5" ~ "AUT",
-                       exp == "E6" ~ "SATWND")] %>% 
-  .[]
+                       exp == "E6" ~ "SATWND")]
 
 q <- c(10, 25, 50, 100, 150, 200) #10mm, para arrancar pensanod en pp acumulada
 
 w <- seq(0, 50) #ancho de cada box w*2+1
 
-fss <- pp[, FSS(lon, lat, pp.obs, pp.fcst, q, w), by = .(exp)]
+# fss <- pp[, FSS(lon, lat, pp.obs, pp.fcst, q, w), by = .(exp)]
+# fwrite(fss, file = "fss.csv")
 
-fwrite(fss, file = "fss.csv")
-fss
+fss <- fread("fss.csv")
 
-fss %>% 
-  ggplot(aes(w, q)) +
-  geom_contour_fill(aes(z = fss)) +
-  # geom_point(aes(color = fss)) +
-  scale_fill_viridis_c(name = "FSS") +
-  facet_wrap(~ exp)
+fss[q < 100] %>% 
+  ggplot(aes(w*2+1, fss)) +
+  geom_line(aes(color = factor(q), group = interaction(exp, q), linetype = exp)) +
+  # facet_wrap(~ exp) +
+  labs(x = "Escala (puntos de griila)",
+       color = "umbral") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+
+fss[q >= 100] %>% 
+  ggplot(aes(w*2+1, fss)) +
+  geom_line(aes(color = factor(q), group = interaction(exp, q), linetype = exp)) +
+  # facet_wrap(~ exp) +
+  scale_linetype_discrete(guide = "none") +
+  scale_color_discrete(name = NULL) +
+  labs(x = "Escala (puntos de grilla)",
+       color = "umbral") +
+  theme_minimal() +
+    theme(legend.position = "bottom")
 ```
 
-```{r}
+
+
+```{r fig.height=5, dpi=100}
+
+fss %>% 
+  ggplot(aes(w*2+1, q)) +
+  geom_contour_fill(aes(z = fss), breaks = seq(0, 1, .1)) +
+  # geom_point(aes(color = fss)) +
+  scale_fill_viridis_c(name = "FSS", guide = guide_colorstrip(inside = TRUE,
+                                                              barwidth = 20,
+                                                              barheight = 0.8), 
+                       breaks = seq(0, 1, .1)) +
+  scale_y_continuous(expand = c(0,0)) +
+  facet_wrap(~ exp) +
+  labs(x = "Escala (puntos de grilla)",
+       y = "umbral de pp acumulada") +
+  theme_minimal() +
+  theme(legend.position = "bottom", 
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
+```{r fig.height=8, dpi=100}
 fss %>% 
   dcast(w + q ~ exp, value.var = "fss") %>% 
-  ggplot(aes(w, q)) +
-  geom_contour_fill(aes(z = SATWND - AUT)) +
+  ggplot(aes(w*2+1, q)) +
+  geom_contour_fill(aes(z = SATWND - AUT), breaks = MakeBreaks(0.01)) +
   # geom_point(aes(color = fss)) +
-  scale_fill_divergent("SATWND - AUT")
+  scale_fill_divergent("SATWND - AUT", guide = guide_colorstrip(barwidth = 0.8,
+                                                              barheight = 8), 
+                       breaks = MakeBreaks(0.01)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  labs(x = "Escala (puntos de grilla)",
+       y = "umbral de pp acumulada") +
+  theme_minimal() +
+  theme(
+        panel.ontop = TRUE, 
+        panel.grid = element_line(linetype = 3)) +
+  
+  fss %>% 
+  dcast(w + q ~ exp, value.var = "fss") %>% 
+  ggplot(aes(w*2+1, q)) +
+  geom_contour_fill(aes(z = SATWND - CONV), breaks = MakeBreaks(0.05)) +
+  # geom_point(aes(color = fss)) +
+  scale_fill_divergent("SATWND - CONV", guide = guide_colorstrip(barwidth = 0.8,
+                                                              barheight = 8),
+                       breaks = MakeBreaks(0.05)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  labs(x = "Escala (puntos de grilla)",
+       y = "umbral de pp acumulada") +
+  theme_minimal() +
+  theme(
+        panel.ontop = TRUE, 
+        panel.grid = element_line(linetype = 3)) +
+  
+  fss %>% 
+  dcast(w + q ~ exp, value.var = "fss") %>% 
+  ggplot(aes(w*2+1, q)) +
+  geom_contour_fill(aes(z = AUT - CONV), breaks = MakeBreaks(0.05)) +
+  # geom_point(aes(color = fss)) +
+  scale_fill_divergent("AUT - CONV", guide = guide_colorstrip(barwidth = 0.8,
+                                                              barheight = 8), 
+                       breaks = MakeBreaks(0.05)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  labs(x = "Escala (puntos de grilla)",
+       y = "umbral de pp acumulada") +
+  theme_minimal() +
+  theme(
+        panel.ontop = TRUE, 
+        panel.grid = element_line(linetype = 3)) +
+  plot_layout(ncol =1)
+
+
 ```
 
