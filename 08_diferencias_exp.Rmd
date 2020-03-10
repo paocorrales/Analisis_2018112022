@@ -93,7 +93,7 @@ pp_inter %>%
                                                barheight = 0.7)) +
   geom_contour(data = pp_imerg_acum, aes(z = pp, color = ..level..), 
                breaks = seq(0, 300, 50),
-               size = 1) +
+               size = 0.5) +
   scale_color_viridis_c("IMERG", direction = -1,
                         breaks = seq(0, 300, 50),
                         guide = guide_colorstrip(inside = TRUE,
