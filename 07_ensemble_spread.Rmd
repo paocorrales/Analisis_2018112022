@@ -48,11 +48,11 @@ El $CR$ debería ser cercano a 1, un $CR < 1$ indica que el ensamble tiene un sp
 ### Implementacion
 
 ```{r include=FALSE}
-# path <- "analisis/diagfiles/E5/asim_conv_2018112*"
-# 
-# perfiles <- read_diag(path, variable = c("uv", "t")) %>%
-#   .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]
-# 
+path <- "analisis/diagfiles/E5/asim_conv_2018112*"
+
+perfiles <- read_diag(path, variable = c("uv", "t")) %>%
+  .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]
+
 # cr <- get_cr(perfiles[type %in% c(181, 187, 281, 287)], tipo = c("superficie", "temporal"))
 # cr <- get_cr(perfiles[type %in% c(120, 130, 131, 133, 220, 230, 231, 233)], tipo = c("perfil", "temporal"))
 # 
@@ -293,6 +293,64 @@ fread("uvt_rcrv_box.csv") %>%
         panel.grid = element_line(linetype = 3))
 ```
 
+Por estación
+
+
+```{r}
+# rcrv_est <- perfiles %>%
+#   # .[, ":="(lon.box = cut_round(lon, breaks = seq(284, 309, 2.5)),
+#   #          lat.box = cut_round(lat, breaks = seq(-42, -17, 2.5)))] %>%
+#   .[usage.flag == 1 & !is.na(obs)] %>%
+#   .[, ":="(mean.guess = mean(obs - obs.guess, na.rm = TRUE),
+#            sd.guess = sd(obs - obs.guess, na.rm = TRUE)), by = .(id, date)] %>%
+#   .[, y := (obs - mean.guess)/sqrt(sd.guess^2 + error^2), by = .(id, date)] %>%
+#   .[, .(mean.y = mean(y, na.rm = TRUE),
+#         sd.y = sd(y, na.rm = TRUE)), by = .(var, type, stationID)]
+# fwrite(rcrv_est, "uvt_rcrv_est.csv")
+
+rcrv_est <- fread("uvt_rcrv_est.csv")
+
+estaciones <- perfiles[type %in% c(181, 187, 281, 287), .(stationID, lon, lat)] %>% 
+  # distinct(stationID, .keep_all = TRUE)
+  unique(by = "stationID")
+
+
+estaciones[rcrv_est, on = .(stationID)] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = sd.y)) +
+  scale_color_viridis_c(breaks = seq(0, 5, 0.5),
+                       limits = c(0, 5),
+                       direction = -1,
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 20,
+                                                barheight = 0.8)) +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  labs(title = "RCRV",
+       subtitle = "Calculated for each station",
+       y = "",
+       color = "") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+estaciones[rcrv_est, on = .(stationID)] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = mean.y)) +
+  scale_color_viridis_c(breaks = seq(-1, 1, 0.25),
+                       limits = c(-1, 1),
+                       direction = -1,
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 20,
+                                                barheight = 0.8)) +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  labs(title = "RCRV (bias)",
+       subtitle = "Calculated for each station",
+       y = "",
+       color = "") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
 
 ## Conclusión...
 
