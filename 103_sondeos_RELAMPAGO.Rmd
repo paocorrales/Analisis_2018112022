@@ -1,0 +1,44 @@
+---
+title: "103_sondeos_RELAMPAGO"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(metR)
+library(data.table)
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+path <- "/home/paola.corrales/datosmunin/DA/DA_DATA/OBS_RELAMPAGO/sondeos_nc/"
+
+files <- list.files(path, pattern = ".nc", full.names = TRUE)
+
+sondeos <- map(files, function(x) {
+  x
+  ReadNetCDF(x) %>% 
+  .[, launch_time := as.POSIXct(launch_time, origin = "2019-01-31 11:27:46", 
+                                tz = "America/Argentina/Buenos_Aires")] %>% 
+  .[, Time := seconds(Time) + launch_time] %>% 
+  .[!is.nan(Time) & launch_time %between% c(as_datetime("2018-11-20 15:00:00", tz = "America/Argentina/Buenos_Aires"), as_datetime("2018-11-23 09:00:00", tz = "America/Argentina/Buenos_Aires"))] %>% 
+  .[, ":="(launch_time = with_tz(launch_time, tzone = "UTC"),
+           Time = with_tz(Time, tzone = "UTC"),
+           Site = str_split(basename(x), "_")[[1]][1])]
+}) %>% 
+  rbindlist()
+
+```
+
+```{r}
+sondeos[, .N, by = .(Site)]
+
+M1 <- ReadNetCDF(files[4]) %>% 
+    .[, launch_time := as.POSIXct(launch_time, origin = "2019-01-31 11:27:46", 
+                                tz = "America/Argentina/Buenos_Aires")] %>% 
+  .[, Time := seconds(Time) + launch_time] %>% 
+  unique(by = "launch_time")
+```
+
