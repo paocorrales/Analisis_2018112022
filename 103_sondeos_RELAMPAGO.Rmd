@@ -17,28 +17,48 @@ path <- "/home/paola.corrales/datosmunin/DA/DA_DATA/OBS_RELAMPAGO/sondeos_nc/"
 
 files <- list.files(path, pattern = ".nc", full.names = TRUE)
 
-sondeos <- map(files, function(x) {
-  x
-  ReadNetCDF(x) %>% 
-  .[, launch_time := as.POSIXct(launch_time, origin = "2019-01-31 11:27:46", 
-                                tz = "America/Argentina/Buenos_Aires")] %>% 
-  .[, Time := seconds(Time) + launch_time] %>% 
-  .[!is.nan(Time) & launch_time %between% c(as_datetime("2018-11-20 15:00:00", tz = "America/Argentina/Buenos_Aires"), as_datetime("2018-11-23 09:00:00", tz = "America/Argentina/Buenos_Aires"))] %>% 
-  .[, ":="(launch_time = with_tz(launch_time, tzone = "UTC"),
-           Time = with_tz(Time, tzone = "UTC"),
-           Site = str_split(basename(x), "_")[[1]][1])]
+sondeos <- purrr::map(files, function(x) {
+  # cat(x)
+  vars <- setdiff(names(GlanceNetCDF(x)$vars), c("llat", "llon", "lalt"))
+  ReadNetCDF(x, vars = vars) %>% 
+    .[, launch_time := with_tz(force_tz(launch_time, tzone = "America/Argentina/Buenos_Aires"),
+                               tzone = "UTC")] %>% 
+    .[, Time := seconds(Time) + launch_time] %>% 
+    .[!is.nan(Time) & launch_time %between% c(as_datetime("2018-11-20 18:00:00", tz = "UTC"), as_datetime("2018-11-23 15:00:00", tz = "UTC"))] %>% 
+    .[, ":="(Site = str_split(basename(x), "_")[[1]][1])] %>% 
+    .[, lapply(.SD, function(x) replace(x, x == 999 | is.nan(x), NA))]
 }) %>% 
   rbindlist()
 
 ```
 
-```{r}
-sondeos[, .N, by = .(Site)]
+Hay 129 sondeos entre las 18Z del 20/11 y las 12Z del 23/11!
 
-M1 <- ReadNetCDF(files[4]) %>% 
-    .[, launch_time := as.POSIXct(launch_time, origin = "2019-01-31 11:27:46", 
-                                tz = "America/Argentina/Buenos_Aires")] %>% 
-  .[, Time := seconds(Time) + launch_time] %>% 
-  unique(by = "launch_time")
+```{r}
+sondeos %>% 
+  unique(by = c("launch_time", "Site")) %>% 
+  .[, .N, by = Site] %>% 
+  knitr::kable()
 ```
+
+## Intento de interpolación
+
+```{r}
+library(reticulate)
+
+wrf <- import("wrf")
+ncdf <- import("netCDF4")
+
+file_in <- "/home/paola.corrales/datosmunin/EXP/E4/ANA/20181120180000/analysis.mem001"
+
+ncfile <-  ncdf$Dataset(file_in)
+p <- wrf$getvar(ncfile, varname = "pressure", meta = FALSE)
+uv <- wrf$getvar(ncfile, varname = "uvmet")
+
+p_r <- py_to_r(p)
+
+class(p)
+
+```
+
 
