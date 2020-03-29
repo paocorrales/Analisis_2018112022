@@ -244,6 +244,10 @@ FSS <- function(lon, lat, obs, fcst, q, w){
   return(out)
 }
 
+# Parse radiosondes_RELAMPAGO ---------------------------------------------
+
+library(data.table)
+library(dplyr)
 
 read_radiosonde_relampago <- function(file){
   # Leo línea por línea
@@ -251,9 +255,8 @@ read_radiosonde_relampago <- function(file){
   
   # Indices donde comienza cada sondeo
   idx <- which(grepl("Data Type:", lines))
-  idx <- c(idx, length(temp)+1)
+  idx <- c(idx, length(lines)+1)
   
-  soundings <- list()
   for (i in seq_len(length(idx)-1)) { 
     
     out <- read.table(text = lines[(idx[i] + 15):(idx[i + 1] - 1)]) %>% 
@@ -268,8 +271,11 @@ read_radiosonde_relampago <- function(file){
     site <- strsplit(lines[idx[i] + 2], "         ")[[1]][2]  
     
     out[, ":="(Site = site,
-               nominal_launch_time = nominal_launch,
-               launch_time = launch)]
-    
+               Nominal_launch_time = nominal_launch,
+               Launch_time = launch)] %>% 
+      .[, lapply(.SD, function(x) replace(x, x == 999 | is.nan(x), NA))] %>% 
+      .[]
+    soundings[[i]] <- out
   }
+  soundings <- rbindlist(soundings, fill=TRUE)
 }
