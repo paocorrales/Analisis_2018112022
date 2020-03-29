@@ -314,3 +314,10 @@ td <- function(QVAPOR, P) {
   
   return(td)
 }
+
+## T
+# https://github.com/NCAR/wrf-python/blob/d9585354c0e2a75a0f7c1d6b200d353f5e4eb084/fortran/wrf_user.f90#L57
+
+TK <- function(T, P, T_BASE = 300){
+  tk <- (T + T_BASE)*(P/100000)^(2/7)
+}
