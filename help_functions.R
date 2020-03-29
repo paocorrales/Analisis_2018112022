@@ -243,3 +243,33 @@ FSS <- function(lon, lat, obs, fcst, q, w){
   
   return(out)
 }
+
+
+read_radiosonde_relampago <- function(file){
+  # Leo línea por línea
+  lines <- readLines(file)
+  
+  # Indices donde comienza cada sondeo
+  idx <- which(grepl("Data Type:", lines))
+  idx <- c(idx, length(temp)+1)
+  
+  soundings <- list()
+  for (i in seq_len(length(idx)-1)) { 
+    
+    out <- read.table(text = lines[(idx[i] + 15):(idx[i + 1] - 1)]) %>% 
+      as.data.table()
+    
+    names <- strsplit(lines[idx[i] + 12], " ")[[1]]
+    names <- names[names != ""]
+    colnames(out) <- names
+    
+    launch <- lubridate::ymd_hms(strsplit(lines[idx[i] + 4], "    ")[[1]][2])
+    nominal_launch <- lubridate::ymd_hms(strsplit(lines[idx[i] + 11], "):")[[1]][2])
+    site <- strsplit(lines[idx[i] + 2], "         ")[[1]][2]  
+    
+    out[, ":="(Site = site,
+               nominal_launch_time = nominal_launch,
+               launch_time = launch)]
+    
+  }
+}
