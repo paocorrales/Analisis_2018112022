@@ -256,7 +256,7 @@ read_radiosonde_relampago <- function(file){
   # Indices donde comienza cada sondeo
   idx <- which(grepl("Data Type:", lines))
   idx <- c(idx, length(lines)+1)
-  
+  soundings <- list()
   for (i in seq_len(length(idx)-1)) { 
     
     out <- read.table(text = lines[(idx[i] + 15):(idx[i + 1] - 1)]) %>% 
@@ -270,54 +270,14 @@ read_radiosonde_relampago <- function(file){
     nominal_launch <- lubridate::ymd_hms(strsplit(lines[idx[i] + 11], "):")[[1]][2])
     site <- strsplit(lines[idx[i] + 2], "         ")[[1]][2]  
     
-    out[, ":="(Site = site,
+    out <- out[, ":="(Site = site,
                Nominal_launch_time = nominal_launch,
                Launch_time = launch)] %>% 
-      .[, lapply(.SD, function(x) replace(x, x == 999 | is.nan(x), NA))] %>% 
+      .[, Time := seconds(Time) + Launch_time]
+      .[, lapply(.SD, function(x) replace(x, as.character(x) %in% c("999", "9999", "999.0"), NA))] %>% 
       .[]
     soundings[[i]] <- out
   }
   soundings <- rbindlist(soundings, fill=TRUE)
 }
 
-
-# Post procesamiento WRF --------------------------------------------------
-
-## Humedad relativa
-# https://github.com/NCAR/wrf-python/blob/d9585354c0e2a75a0f7c1d6b200d353f5e4eb084/fortran/wrf_user.f90#L730
-
-rh <- function(QVAPOR, P, T) {
-  P <- P*0.01      # Debe estar en hPa
-  T <- T - 273.15  # Debe estar en Celsius
-  es <- 6.112 * exp(17.67*(T)/(T + 273.15 - 29.65))
-  
-  qvs <- es/(P - (1 - 0.622)*es)
-  
-  rh <- 100*pmax(pmin(QVAPOR/qvs, 1), 0)
-  
-  return(rh)
-}
-
-## Dew Point
-# https://github.com/NCAR/wrf-python/blob/d9585354c0e2a75a0f7c1d6b200d353f5e4eb084/fortran/wrf_user.f90#L970
-
-td <- function(QVAPOR, P) {
-  P <- P*0.01
-  
-  QVAPOR <- ifelse(QVAPOR < 0, 0, QVAPOR)
-  
-  tdc <- QVAPOR*P / (0.622 + QVAPOR)
-  
-  tdc <- ifelse(tdc < 0.001, 0.001, tdc)
-  
-  td <- (243.5*log(tdc) - 440.8) / (19.48 - log(tdc))
-  
-  return(td)
-}
-
-## T
-# https://github.com/NCAR/wrf-python/blob/d9585354c0e2a75a0f7c1d6b200d353f5e4eb084/fortran/wrf_user.f90#L57
-
-TK <- function(T, P, T_BASE = 300){
-  tk <- (T + T_BASE)*(P/100000)^(2/7)
-}
