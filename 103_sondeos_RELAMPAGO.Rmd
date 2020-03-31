@@ -11,6 +11,7 @@ library(data.table)
 library(tidyverse)
 library(lubridate)
 source("help_functions.R")
+source("postprocesamiento.R")
 ```
 
 ```{r}
@@ -36,19 +37,42 @@ sondeos %>%
 ```{r}
 ncfile <- "/home/paola.corrales/datosmunin/EXP/E4/ANA/20181120180000/analysis.mem001"
 
-fcst <- ReadNetCDF(ncfile, vars = c("P", "PB", "T", "QVAPOR", 
+fcst <- ReadNetCDF(ncfile, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 
                                     lon = "XLONG", lat = "XLAT")) %>%
-    .[, P := P + PB] %>%
-    .[, T := TK(T, P)] %>%
-    .[, RH := rh(QVAPOR, P, T)] %>% 
-    .[, DEWP := td(QVAPOR, P) + 273.15] %>% 
-    .[, ":="(west_east = NULL,
-             bottom_top = NULL,
+    .[, p := p + PB] %>%
+    .[, t := tk(t, p)] %>%
+    .[, rh := rh(qv, p, t)] %>% 
+    .[, dewp := td(qv, p) + 273.15] %>% 
+    .[, ":="(Time = NULL,
+             west_east = NULL,
              south_north = NULL,
+             qv = NULL,
              PB = NULL)] %>% 
+  .[, c("u", "v") := uvmet(ncfile)] %>% 
+  .[, time := lubridate::ymd_hms("20181120180000")] %>% 
   .[]
 
 ```
+```{r}
+fcst_time <- lubridate::ymd_hms("20181120180000")
+
+intervalo <- interval(fcst_time - minutes(5), fcst_time + minutes(5))
+
+subset <- sondeos %>% 
+  mutate(Time = seconds(Time) + Launch_time) %>% 
+  filter(Launch_time %within% intervalo) 
+  
+
+subset[1, ]
+
+fcst[lon %~% subset[1, ]$Lon]
+
+# Filtro por tiempo (10minutos alrededor del fcst)
+# unique latlon (cada sondeo tiene una ubicación única), me quedan como máximo 10 puntos
+# interp(lat.sonde, lon.sonde, lat.fcst, lat.fcst, z.fcst) by = (nivel, variable) --> eso me devuelve un dataframe con cant.sondeos x niveles x variables. 
+# Ahora interpolación en la vertical. approx(x = p.fcst, y = var.fcst, xout = p.sondeo)
+```
+
 
 ```{r}
 library(reticulate)
@@ -57,6 +81,9 @@ wrf <- import("wrf")
 ncdf <- import("netCDF4")
 
 fcst1 <-  ncdf$Dataset(ncfile)
+
+image(wrf$getvar(fcst1, "uvmet", meta = FALSE)[2, 1, , ])
+
 
 T <- wrf$getvar(fcst1, "tk" , meta = FALSE)
 
