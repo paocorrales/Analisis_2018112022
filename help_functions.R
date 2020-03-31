@@ -273,7 +273,7 @@ read_radiosonde_relampago <- function(file){
     out <- out[, ":="(Site = site,
                Nominal_launch_time = nominal_launch,
                Launch_time = launch)] %>% 
-      .[, Time := seconds(Time) + Launch_time]
+      .[, Time := seconds(Time) + Launch_time] %>% 
       .[, lapply(.SD, function(x) replace(x, as.character(x) %in% c("999", "9999", "999.0"), NA))] %>% 
       .[]
     soundings[[i]] <- out
