@@ -276,6 +276,16 @@ read_radiosonde_relampago <- function(file){
       .[, Time := seconds(Time) + Launch_time] %>% 
       .[, lapply(.SD, function(x) replace(x, as.character(x) %in% c("999", "9999", "999.0"), NA))] %>% 
       .[]
+    if (length(colnames(out) == 24)) {
+      colnames(out) <- c("time", "p", "t", "td", "rh", "u", "v", "spd", "dir", "w", "lon", "lat", "ele", 
+                         "azi", "alt", "qp", "qt", "qrh", "qu", "qv", "qdZ", "site", "nominal_launch_time", 
+                         "launch_time")
+    } else {
+      colnames(out) <- c("time", "p", "t", "td", "rh", "u", "v", "spd", "dir", "w", "lon", "lat", "ele", 
+                         "azi", "alt", "qp", "qt", "qrh", "qu", "qv", "qdZ", "site", "nominal_launch_time", 
+                         "launch_time", "mixr", "ptmp")
+    }
+
     soundings[[i]] <- out
   }
   soundings <- rbindlist(soundings, fill=TRUE)
