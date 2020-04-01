@@ -66,12 +66,12 @@ rx <- range(unique_subset$lon, na.rm = TRUE) + c(-1, 1)
 ry <- range(unique_subset$lat, na.rm = TRUE) + c(-1, 1)
 
 fcst_obs <- fcst %>% 
-  melt(id.vars = c("bottom_top", "lon", "lat", "time", "exp", "member")) %>% 
+  melt(id.vars = c("bottom_top", "lon", "lat", "time", "init_time", "exp", "member")) %>% 
   .[lat %between% ry & lon %between% rx] %>% 
   .[, interp_lite(lon, lat, value, 
                      xo = unique_subset$lon, yo = unique_subset$lat,
                      output = "points"),
-    by = .(bottom_top, variable, time, exp, member)]
+    by = .(bottom_top, variable, time, init_time, exp, member)]
 
 #fcst_obs <- fcst %>% melt(id.vars = c("bottom_top", "lon", "lat", "time", "init_time", "exp", "member")) %>% 
 #  .[, interp_lite(lon, lat, value, 
