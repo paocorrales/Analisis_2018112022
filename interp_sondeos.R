@@ -62,10 +62,21 @@ if (nrow(subset) < 1) {
 
 unique_subset <- subset %>% unique(by = c("lat", "lon"))
 
-fcst_obs <- fcst %>% melt(id.vars = c("bottom_top", "lon", "lat", "time", "init_time", "exp", "member")) %>% 
-  .[, interp::interp(lon, lat, value, 
+rx <- range(unique_subset$lon, na.rm = TRUE) + c(-1, 1)
+ry <- range(unique_subset$lat, na.rm = TRUE) + c(-1, 1)
+
+fcst_obs <- fcst %>% 
+  melt(id.vars = c("bottom_top", "lon", "lat", "time", "exp", "member")) %>% 
+  .[lat %between% ry & lon %between% rx] %>% 
+  .[, interp_lite(lon, lat, value, 
                      xo = unique_subset$lon, yo = unique_subset$lat,
-                     output = "points"), by = .(bottom_top, variable, time, init_time, exp, member)]
+                     output = "points"),
+    by = .(bottom_top, variable, time, exp, member)]
+
+#fcst_obs <- fcst %>% melt(id.vars = c("bottom_top", "lon", "lat", "time", "init_time", "exp", "member")) %>% 
+#  .[, interp_lite(lon, lat, value, 
+#                     xo = unique_subset$lon, yo = unique_subset$lat,
+#                     output = "points"), by = .(bottom_top, variable, time, init_time, exp, member)]
 
 fcst_obs <- fcst_obs[variable != "p"] %>% 
   .[fcst_obs[variable == "p"], on = c("bottom_top", "time", "x", "y", "init_time", "exp", "member")] %>% 
@@ -94,5 +105,5 @@ subset <- subset %>%
    .[]
 
 fwrite(subset, paste0("/glade/scratch/jruiz/EXP/analisis/sondeos/", args[3], "/sondeo_", descriptores[[1]][["exp"]], "_",
-			descriptores[[1]]["member"], "_",  format(fcst_time, "%Y%M%d%H%M%S"), ".csv"))
+			descriptores[[1]]["member"], "_",  format(fcst_time, "%Y%m%d%H%M%S"), ".csv"))
 } 
