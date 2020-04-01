@@ -54,7 +54,11 @@ fcst_time <- ymd_hms(descriptores[[1]][["date"]])
 
 intervalo <- interval(fcst_time - minutes(5), fcst_time + minutes(5))
 
-subset <- sondeos[launch_time %within% intervalo]
+subset <- sondeos[time %within% intervalo]
+
+if (nrow(subset) < 1) {
+ 	next
+} 
 
 unique_subset <- subset %>% unique(by = c("lat", "lon"))
 
@@ -68,18 +72,25 @@ fcst_obs <- fcst_obs[variable != "p"] %>%
   setnames(c("x", "y", "z", "i.z"), c("lon", "lat", "value", "p"))
 
 	
-approx_safe <- purrr::possibly(approx, otherwise = NA)
+# approx_safe <- purrr::possibly(approx, otherwise = NA)
+
+approx_safe <- function(lon_by, lat_by, variable_by, p) {
+sub <- fcst_obs[lon == lon_by & lat == lat_by &
+                                   variable == variable_by]
+if (nrow(sub) < 2) {
+	return(NA_real_)
+} else {
+	approx(x = sub$p*0.01,  y = sub$value, xout  = p)$y
+}
+
+}
 
 subset <- subset %>% 
   melt(measure.vars = c("t", "td", "rh", "u", "v")) %>% 
-  .[, fcst_value := approx_safe(x = fcst_obs[lon == .BY$lon & lat == .BY$lat & 
-                                   variable == .BY$variable]$p*0.01, 
-                           y = fcst_obs[lon == .BY$lon & lat == .BY$lat & 
-                                   variable == .BY$variable]$value,
-                           xout = p)$y, 
+  .[, fcst_value := approx_safe(.BY$lon, .BY$lat, .BY$variable, p), 
     by = .(lon, lat, variable)] %>%
-   .[, ":="(exp = descriptores[[1]]["exp"],
-           member = descriptores[[1]]["member"])] %>%
+   .[, ":="(exp = descriptores[[1]][["exp"]],
+           member = descriptores[[1]][["member"]])] %>%
    .[]
 
 fwrite(subset, paste0("/glade/scratch/jruiz/EXP/analisis/sondeos/", args[3], "/sondeo_", descriptores[[1]][["exp"]], "_",
