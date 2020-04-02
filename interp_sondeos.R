@@ -19,8 +19,8 @@ files <- list.files(path = "/glade/work/jruiz/sondeos_raw",
 sondeos <- purrr::map(files, ~ read_radiosonde_relampago(.x)) %>%
   rbindlist()
 
-sondeos <- sondeos[!(site == "Mobile/CSU_Mobile" &
-                   nominal_launch_time == as_datetime("2018-11-22 16:00:00"))]
+#sondeos <- sondeos[!(site == "Mobile/CSU_Mobile" &
+#                   nominal_launch_time == as_datetime("2018-11-22 16:00:00"))]
 
 message("Listo sondeos")
 
@@ -59,7 +59,9 @@ fcst_time <- ymd_hms(descriptores[[1]][["date"]])
 
 intervalo <- interval(fcst_time - minutes(5), fcst_time + minutes(5))
 
-subset <- sondeos[time %within% intervalo]
+subset <- sondeos[time %within% intervalo] %>% 
+   .[, c("xp", "yp") := wrf_project(lon, lat, round = FALSE)]
+
 message(paste0(nrow(subset), " observaciones de sondeos en este tiempo"))
 
 if (nrow(subset) < 1) {
@@ -76,15 +78,17 @@ unique_site <- unique_subset %>% unique(by = "site")
     rx <- range(unique_subset[site == x]$lon, na.rm = TRUE) + c(-1, 1)
     ry <- range(unique_subset[site == x]$lat, na.rm = TRUE) + c(-1, 1)
     out <- fcst %>% 
+      .[lat %between% ry & lon %between% rx] %>%
       melt(id.vars = c("bottom_top", "lon", "lat", "time", "init_time", "exp", "member")) %>% 
-      .[lat %between% ry & lon %between% rx] %>% 
+      .[, c("xp", "yp") := wrf_project(lon, lat)] %>%
       .[, interp_lite(lon, lat, value, 
-                      xo = unique_subset[site == x]$lon, 
-                      yo = unique_subset[site == x]$lat,
+                      xo = unique_subset[site == x]$xp, 
+                      yo = unique_subset[site == x]$yp,
                       output = "points"),
         by = .(bottom_top, variable, time, init_time, exp, member)]
   }) %>% 
-    rbindlist()
+    rbindlist() %>%
+    .[, c("lon", "lat") := wrf_project(x, y, inverse = TRUE, round = FALSE)]
 message(paste("Interpolación ok!"))
 
 fcst_obs <- fcst_obs[variable != "p"] %>% 
