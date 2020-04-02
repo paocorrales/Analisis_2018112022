@@ -19,9 +19,6 @@ files <- list.files(path = "/glade/work/jruiz/sondeos_raw",
 sondeos <- purrr::map(files, ~ read_radiosonde_relampago(.x)) %>%
   rbindlist()
 
-#sondeos <- sondeos[!(site == "Mobile/CSU_Mobile" &
-#                   nominal_launch_time == as_datetime("2018-11-22 16:00:00"))]
-
 message("Listo sondeos")
 
 # itero sobre pronósticos
@@ -95,9 +92,6 @@ for (f in files) {
   fcst_obs <- fcst_obs[variable != "p"] %>% 
     .[fcst_obs[variable == "p"], on = c("bottom_top", "time", "x", "y", "init_time", "exp", "member")] %>% 
     setnames(c("x", "y", "z", "i.z"), c("xp", "yp", "value", "p"))
-  
-  
-  # approx_safe <- purrr::possibly(approx, otherwise = NA)
   
   approx_safe <- function(lon_by, lat_by, variable_by, p) {
     sub <- fcst_obs[xp == lon_by & yp == lat_by &
