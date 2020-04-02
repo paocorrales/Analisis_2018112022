@@ -97,3 +97,19 @@ uvmet <- function(ncfile) {
   list(c(umet), 
        c(vmet))
 }
+
+
+# wrf_proj ----------------------------------------------------------------
+
+
+wrf_project <- function(lon, lat, inverse = FALSE, round = TRUE) {
+  map_proj <- "+proj=lcc +lat_1=-30.9659996032715 +lat_2=-30.9659996032715 +lat_0=-30.9660034179688 +lon_0=-63.5670013427734"
+  xy <- proj4::project(list(lon, lat), map_proj, inverse = inverse)
+  if (round == TRUE) {
+  list(x = round(xy$x, -3),
+       y = round(xy$y, -4))
+  } else {
+    list(x = xy$x,
+         y = xy$y)
+  }
+}
