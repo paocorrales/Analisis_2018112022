@@ -81,7 +81,7 @@ for (f in files) {
       .[lat %between% ry & lon %between% rx] %>%
       melt(id.vars = c("bottom_top", "lon", "lat", "time", "init_time", "exp", "member")) %>% 
       .[, c("xp", "yp") := wrf_project(lon, lat)] %>%
-      .[, interp_lite(lon, lat, value, 
+      .[, interp_lite(xp, yp, value, 
                       xo = unique_subset[site == x]$xp, 
                       yo = unique_subset[site == x]$yp,
                       output = "points"),
