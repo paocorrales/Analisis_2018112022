@@ -16,8 +16,11 @@ source("postprocesamiento.R")
 files <- list.files(path = "/glade/work/jruiz/sondeos_raw",
                     pattern = "cls", full.names = TRUE)
 
-sondeos <- purrr::map(files, ~ read_radiosonde_relampago(.x)) %>% 
+sondeos <- purrr::map(files, ~ read_radiosonde_relampago(.x)) %>%
   rbindlist()
+
+sondeos <- sondeos[!(site == "Mobile/CSU_Mobile" &
+                   nominal_launch_time == as_datetime("2018-11-22 16:00:00"))]
 
 message("Listo sondeos")
 
@@ -25,6 +28,8 @@ message("Listo sondeos")
 
 files <- list.files(path = paste0("/glade/scratch/jruiz/EXP/", args[1], "/FCST/", args[3],"/", args[2]), 
 		recursive = TRUE, pattern = "wrfout", full.names = TRUE)
+
+#files <- files[60:70]
 for (f in files) {
 
 message(paste("Procesando :", f))
@@ -55,6 +60,7 @@ fcst_time <- ymd_hms(descriptores[[1]][["date"]])
 intervalo <- interval(fcst_time - minutes(5), fcst_time + minutes(5))
 
 subset <- sondeos[time %within% intervalo]
+message(paste0(nrow(subset), " observaciones de sondeos en este tiempo"))
 
 if (nrow(subset) < 1) {
  	next
@@ -62,10 +68,24 @@ if (nrow(subset) < 1) {
 
 unique_subset <- subset %>% unique(by = c("lat", "lon"))
 
-fcst_obs <- fcst %>% melt(id.vars = c("bottom_top", "lon", "lat", "time", "init_time", "exp", "member")) %>% 
-  .[, interp::interp(lon, lat, value, 
-                     xo = unique_subset$lon, yo = unique_subset$lat,
-                     output = "points"), by = .(bottom_top, variable, time, init_time, exp, member)]
+unique_site <- unique_subset %>% unique(by = "site")
+
+# intero para cada sondeo
+  
+  fcst_obs <- purrr::map(unique_site$site, function(x) {
+    rx <- range(unique_subset[site == x]$lon, na.rm = TRUE) + c(-1, 1)
+    ry <- range(unique_subset[site == x]$lat, na.rm = TRUE) + c(-1, 1)
+    out <- fcst %>% 
+      melt(id.vars = c("bottom_top", "lon", "lat", "time", "init_time", "exp", "member")) %>% 
+      .[lat %between% ry & lon %between% rx] %>% 
+      .[, interp_lite(lon, lat, value, 
+                      xo = unique_subset[site == x]$lon, 
+                      yo = unique_subset[site == x]$lat,
+                      output = "points"),
+        by = .(bottom_top, variable, time, init_time, exp, member)]
+  }) %>% 
+    rbindlist()
+message(paste("Interpolación ok!"))
 
 fcst_obs <- fcst_obs[variable != "p"] %>% 
   .[fcst_obs[variable == "p"], on = c("bottom_top", "time", "x", "y", "init_time", "exp", "member")] %>% 
@@ -94,5 +114,5 @@ subset <- subset %>%
    .[]
 
 fwrite(subset, paste0("/glade/scratch/jruiz/EXP/analisis/sondeos/", args[3], "/sondeo_", descriptores[[1]][["exp"]], "_",
-			descriptores[[1]]["member"], "_",  format(fcst_time, "%Y%M%d%H%M%S"), ".csv"))
+			descriptores[[1]]["member"], "_",  format(fcst_time, "%Y%m%d%H%M%S"), ".csv"))
 } 
