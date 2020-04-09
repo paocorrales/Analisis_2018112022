@@ -28,8 +28,7 @@ geom_mapa <- function() {
   geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
 }
 
-exp <- c(E3 = "CONV+AUT",
-         E4 = "CONV",
+exp <- c(E4 = "CONV",
          E5 = "AUT",
          E6 = "SATWND")
 
