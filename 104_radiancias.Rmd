@@ -1,0 +1,92 @@
+---
+title: "104_radiancias"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(metR)
+library(data.table)
+library(lubridate)
+source("help_functions.R")
+source("postprocesamiento.R")
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
+```
+
+## GOES 16
+
+Canales en la región del infrarrojo
+
+| Canal | Longitud de onda Central $\mu m$ | Observaciones | Función de peso |
+|:-----:|:----------:|:------------------------------------|:----------------------------|
+|  7  |  3.9  | Sensible tanto a la radiación del sol como a la emitida por la Tierra | Maxímo en superficie |
+|  8  |  6.2  | Sensible al vapor de agua | Máximo en 425 hPa. |
+|  9  |  6.9  | Predomina la absorción por vapor de agua | Maxímo cercano a 460 hPa. |
+| 10  |  7.3  | Sensible al vapor de agua | Máximo en 640 hPa. |
+| 11  |  8.4  | Para estudio de microfísica de nubes y plumas volcánicas con ceniza y dióxido de sulfuro | Máximo en niveles bajos |
+| 12  |  9.6  | Absorción por ozono  | Máximo en la estratósfera |
+| 13  | 10.3  | Ventana radiativa, absorción despresiable en la atmósfera. Cerca del $\lambda$ de máxima emisión terrestre | Máximo en superficie |
+| 14  | 11.2  | Ventana radiativa con mayor absorción de vapor de agua | |
+| 15  | 12.3  | Ventana radiativa con mayor absorción de vapor de agua | |
+| 16  | 13.3  | Absorción por dióxido de carbono | Máximo cerca de superficie |
+
+
+Al parecer las observaciones de GOES vienen en archivos .nc, uno por canal en radiancias. 
+
+```{r}
+# Planck
+
+rad_to_tb <- function(rad, mu, h = 6.629e-34, c = 2.998e8, kb = 1.381e-23) {
+  mu <- c(mu)
+  rad <- c(rad)
+  tb <- h*c/(kb*mu*log(1 + 2*h*c^2/(rad*mu^5)))
+  
+  return(tb)
+}
+```
+
+
+```{r}
+files <- list.files(path = "/home/paola.corrales/datosmunin/DA/DA_DATA/GOES16/", pattern = "nc", full.names = TRUE)
+
+rad_goes <- purrr::map(files, function(f) {
+  
+  meta <- unglue::unglue(basename(f), "OR_ABI-L1b-RadF-M3{channel}_G16_s{sdate}_e{edate}_c{cdate}.nc")
+  nc <- nc_open(f)
+  mu <- ncvar_get(nc, "band_wavelength")*1e-6
+  out <- ReadNetCDF(f, vars = c(rad = "Rad", qf = "DQF")) %>% 
+    .[, tb := rad_to_tb(rad, mu = mu)] %>% 
+    .[, channel := meta[[1]][["channel"]]] %>% 
+    .[]
+}) %>% 
+  rbindlist()
+
+# rad_goes[channel == "C07"] %>% 
+#   ggplot(aes(x, y)) +
+#   geom_point(aes(color = tb)) +
+#   scale_color_viridis_c() +
+#   facet_wrap(~ channel)
+```
+
+
+
+```{r}
+tb_crtm <- ReadNetCDF("/home/paola.corrales/datosmunin/G16.20181122_000000.012.nc")
+  
+tb_crtm %>% 
+  melt(measure.vars = patterns("CH")) %>% 
+  ggplot(aes(XLONG, XLAT)) +
+  geom_point(aes(color = value)) +
+  scale_color_viridis_c() +
+  geom_mapa() +
+  coord_sf(xlim = range(tb_crtm$XLONG), ylim = range(tb_crtm$XLAT)) +
+    facet_wrap(~ variable)
+```
+
