@@ -68,11 +68,10 @@ rad_goes <- purrr::map(files, function(f) {
 }) %>% 
   rbindlist()
 
-# rad_goes[channel == "C07"] %>% 
-#   ggplot(aes(x, y)) +
-#   geom_point(aes(color = tb)) +
-#   scale_color_viridis_c() +
-#   facet_wrap(~ channel)
+out %>%
+  ggplot(aes(x, y)) +
+  geom_scattermore(aes(color = tb)) +
+  scale_color_viridis_c() 
 ```
 
 
