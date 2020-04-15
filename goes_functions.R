@@ -46,11 +46,29 @@ scale_color_topes <- function(colours = hex,
 }
 # Planck ------------------------------------------------------------------
 
-rad_to_tb <- function(rad, mu, h = 6.629e-34, c = 2.998e8, kb = 1.381e-23) {
-  mu <- c(mu)
+rad_to_tb <- function(rad, ncfile, h = 6.629e-34, c = 2.998e8, kb = 1.381e-23) {
+  # https://www.unidata.ucar.edu/mailing_lists/archives/ldm-users/2018/msg00028.html
+  # mu <- c(mu)
   rad <- c(rad)
-  tb <- h*c/(kb*mu*log(1 + 2*h*c^2/(rad*mu^5)))
+  # tb <- h*c/(kb*mu*log(1 + 2*h*c^2/(rad*mu^5)))
+  
+  planck_fk1 <- ncdf4::ncvar_get(ncfile, "planck_fk1")
+  planck_fk2 <- ncdf4::ncvar_get(ncfile, "planck_fk2")
+  planck_bc1 <- ncdf4::ncvar_get(ncfile, "planck_bc1")
+  planck_bc2 <- ncdf4::ncvar_get(ncfile, "planck_bc2")
+  tb <- ( planck_fk2 / (log((planck_fk1 / rad) + 1 )) - planck_bc1) / planck_bc2
+  
+  tb <- tb - 273.15
   
   return(tb)
 }
 
+
+# Radiancia ---------------------------------------------------------------
+
+calculate_rad <- function(rad, ncfile) {
+  
+  rad_atr <- ncdf4::ncatt_get(ncfile, "Rad")
+  # rad <- rad*rad_atr$scale_factor + rad_atr$add_offset
+  if_else(rad %between% rad_atr$valid_range, rad, NA_real_)
+}
