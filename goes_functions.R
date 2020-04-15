@@ -15,22 +15,20 @@ goes_project <- function(lon, lat, inverse = FALSE, round = TRUE) {
 }
 
 library(ncdf4)
-ncfile <- nc_open("/home/paola.corrales/datosmunin/DA/DA_DATA/GOES16/OR_ABI-L1b-RadF-M3C07_G16_s20183261200367_e20183261211145_c20183261211181.nc")
+file <- "~/Downloads/OR_ABI-L1b-RadF-M3C07_G16_s20183261200367_e20183261211145_c20183261211181 (1).nc"
+ncfile <- nc_open(file)
+
+z <- ncvar_get(ncfile, "Rad")
 
 proj_info <- ncatt_get(ncfile, "goes_imager_projection")
-lon_0 <- proj_info$longitude_of_projection_origin
-h <- proj_info$perspective_point_height + proj_info$semi_major_axis
-sweep <- proj_info$sweep_angle_axis
+h <- proj_info$perspective_point_height 
 
-#https://makersportal.com/blog/2018/11/25/goes-r-satellite-latitude-and-longitude-grid-projection-algorithm
-# GOES-R projection info and retrieving relevant constants
+map_proj <- paste0("+proj=geos",
+                   " +h=",  proj_info$perspective_point_height,
+                   " +lon_0=", proj_info$longitude_of_projection_origin,
+                   " +sweep=", proj_info$sweep_angle_axis,
+                   " +ellps=GRS80")
 
-#proj_info = g16nc.variables['goes_imager_projection']
-#lon_origin = proj_info.longitude_of_projection_origin
-#H = proj_info.perspective_point_height+proj_info.semi_major_axis
-
-r_eq <- proj_info$semi_major_axis
-r_pol <- proj_info$semi_minor_axis
 
 # Data info
 x_atr <- ncatt_get(ncfile, "x")
@@ -39,22 +37,50 @@ y_atr <- ncatt_get(ncfile, "y")
 y <- ncvar_get(ncfile, "y")*y_atr$scale_factor + y_atr$add_offset
 
 
-x <- c(x)
-y <- c(y)
+library(data.table)
+data <- data.table::CJ(y, x, sorted = FALSE)[, c(2, 1)]
 
-# lat/lon calc routine from satellite radian angle vector
-lambda_0 <-  (lon_0*pi)/180.0
 
-a <- sin(x)^2 + cos(x)^2*(cos(y)^2 + (sin(y)*(r_eq/r_pol))^2)
-b <- -2*h*cos(x)*cos(y)
-c <- h^2 - r_eq^2
+data[, z := c(z)]
+data[z > 1, z := NA]
+data[, c("x_m", "y_m") := list(x*h, y*h) ]
 
-r_s <- (- b - sqrt(b^2 - 4*a*c))/2*a
 
-s_x <- r_s*cos(x)*cos(y)
-s_y <- -r_s*sin(x)
-s_z <- r_s*cos(x)*sin(y)
 
-lat <- (atan((r_eq/r_pol)^2 * s_z / sqrt((h - s_x)^2 + s_y^2)))*180/pi
-lon <- (lambda_0 - atan(s_y/(h - s_x)))*180/pi
+
+library(data.table)
+library(ggplot2)
+map <- fortify(rnaturalearth::ne_countries())
+map <- as.data.table(map)
+map[, c("x", "y") := proj4::project(list(long, lat), map_proj, ellps.default = "GRS80")]
+
+data[, z_norm := scales::rescale(z, to = c(0, 1))]
+ggplot2::ggplot() +
+  scattermore::geom_scattermost(data[!is.na(z_norm), .(x_m, y_m)],
+                                viridisLite::viridis(100)[1 + 99*data[!is.na(z_norm), z_norm]]) +
+  # geom_hline(yintercept = ylim) +
+  # geom_vline(xintercept = xlim) +
+  geom_path(data = map, aes(x, y, group = group)) +
+  ggplot2::coord_equal() +
+  ggplot2::coord_equal(ylim = ylim, xlim = xlim)
+
+
+
+ylim <- c(-4.5e6, -2e6)
+xlim <- c(-0.3e6, 2.5e6)
+
+data_sub <- data[x_m %between% xlim & y_m %between% ylim]
+
+data_sub[, c("lon", "lat") := proj4::project(list(x_m, y_m), map_proj, inverse = TRUE)]
+
+
+data_sub[, z_norm := scales::rescale(z, to = c(0, 1))]
+
+
+ggplot2::ggplot() +
+  
+  scattermore::geom_scattermost(data_sub[!is.na(z_norm), .(lon, lat)], interpolate = TRUE, pixels = c(512, 512),
+                                viridisLite::viridis(100)[1 + 99*data_sub[!is.na(z_norm), z_norm]]) +
+  geom_path(data = map, aes(long, lat, group = group)) +
+  ggplot2::coord_equal(ylim = c(-45, -20), xlim = c(-77, -40))
 
