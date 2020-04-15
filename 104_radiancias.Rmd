@@ -12,6 +12,7 @@ library(data.table)
 library(lubridate)
 source("help_functions.R")
 source("postprocesamiento.R")
+source("goes_functions.R")
 
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
 
@@ -40,38 +41,38 @@ Canales en la región del infrarrojo
 
 Al parecer las observaciones de GOES vienen en archivos .nc, uno por canal en radiancias. 
 
-```{r}
-# Planck
-
-rad_to_tb <- function(rad, mu, h = 6.629e-34, c = 2.998e8, kb = 1.381e-23) {
-  mu <- c(mu)
-  rad <- c(rad)
-  tb <- h*c/(kb*mu*log(1 + 2*h*c^2/(rad*mu^5)))
-  
-  return(tb)
-}
-```
-
 
 ```{r}
 files <- list.files(path = "/home/paola.corrales/datosmunin/DA/DA_DATA/GOES16/", pattern = "nc", full.names = TRUE)
 
-rad_goes <- purrr::map(files, function(f) {
+#dominio de interés
+xlim <- c(2600, 3950)
+ylim <- c(3700, 4750)
+
+tb_goes <- purrr::map(files, function(f) {
   
   meta <- unglue::unglue(basename(f), "OR_ABI-L1b-RadF-M3{channel}_G16_s{sdate}_e{edate}_c{cdate}.nc")
   nc <- nc_open(f)
   mu <- ncvar_get(nc, "band_wavelength")*1e-6
-  out <- ReadNetCDF(f, vars = c(rad = "Rad", qf = "DQF")) %>% 
+  out <- ReadNetCDF(f, vars = c(rad = "Rad", qf = "DQF"), 
+                    subset = list(x = xlim, y = ylim)) %>% 
     .[, tb := rad_to_tb(rad, mu = mu)] %>% 
     .[, channel := meta[[1]][["channel"]]] %>% 
+    .[, c("lon", "lat") := goes_projection(x, y, nc)] %>% 
     .[]
 }) %>% 
   rbindlist()
 
-out %>%
-  ggplot(aes(x, y)) +
+tb_goes[channel == "C07"] %>%
+  ggplot(aes(lon, lat)) +
   geom_scattermore(aes(color = tb)) +
-  scale_color_viridis_c() 
+  scale_color_viridis_c() +
+  geom_mapa() +
+  coord_sf(xlim = c(-78, -50), ylim = c(-42, -19)) +
+  labs(title = "GOES-16 channel 7 - test") +
+  theme_minimal() +
+  theme(panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3)) 
 ```
 
 
