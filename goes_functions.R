@@ -28,6 +28,22 @@ goes_projection <- function(x, y, ncfile) {
 #   ggplot2::coord_equal(ylim = c(-45, -20), xlim = c(-77, -40))
 
 
+# scale_color_topes -------------------------------------------------------
+
+scale_color_topes <- function(colours = hex, 
+                              limits = c(-90, 50), 
+                              breaks = seq(-90, 50, 20),
+                              guide = guide_colorbar(barheight = 15),
+                              ...) {
+  # https://github.com/garciafido/cima-goes/tree/master/src/cima/goes/img
+  topes <- data.table::fread("paleta_topes")
+  colours <- rgb(topes$V2, topes$V3, topes$V4, maxColorValue = 255)
+  
+  scale_color_gradientn(colours = colours, 
+                        limits = limits, 
+                        breaks = breaks, 
+                        guide = guide, ...) 
+}
 # Planck ------------------------------------------------------------------
 
 rad_to_tb <- function(rad, mu, h = 6.629e-34, c = 2.998e8, kb = 1.381e-23) {
