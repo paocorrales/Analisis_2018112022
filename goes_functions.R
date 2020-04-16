@@ -3,7 +3,7 @@
 
 goes_projection <- function(x, y, ncfile) {
 
-    proj_info <- ncatt_get(ncfile, "goes_imager_projection")
+    proj_info <- ncdf4::ncatt_get(ncfile, "goes_imager_projection")
   h <- proj_info$perspective_point_height 
   
   map_proj <- paste0("+proj=geos",
@@ -12,9 +12,9 @@ goes_projection <- function(x, y, ncfile) {
                      " +sweep=", proj_info$sweep_angle_axis,
                      " +ellps=GRS80")
   
-  x_atr <- ncatt_get(ncfile, "x")
+  x_atr <- ncdf4::ncatt_get(ncfile, "x")
   x <- (x*x_atr$scale_factor + x_atr$add_offset)*h
-  y_atr <- ncatt_get(ncfile, "y")
+  y_atr <- ncdf4::ncatt_get(ncfile, "y")
   y <- (y*y_atr$scale_factor + y_atr$add_offset)*h
 
   proj4::project(list(x, y), map_proj, inverse = TRUE)
