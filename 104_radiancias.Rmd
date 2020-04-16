@@ -174,10 +174,22 @@ aire_claro %>%
 
 ```{r echo=FALSE}
 aire_claro %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = tb_goes - tb_crtm)) +
+  geom_abline(slope = 1, intercept = 0) +
+  # scale_color_manual(values = c("deepskyblue4", "chartreuse4")) +
+  scale_color_divergent() +
+  facet_wrap(~ channel, scales = "free") +
+  theme_minimal()
+```
+
+```{r echo=FALSE}
+aire_claro %>% 
   melt(measure.vars = c("tb_crtm", "tb_goes"), value.name = "tb") %>% 
   ggplot(aes(tb)) +
-  geom_histogram(aes(fill = variable, y = ..density..), 
-                 position = "stack", alpha = 0.7,
+  geom_histogram(aes(fill = variable), 
+                 position="identity", 
+                 alpha = 0.5,
                  binwidth = 1) +
   facet_wrap(~ channel, scales = "free") +
   theme_minimal()
@@ -238,7 +250,7 @@ nuboso %>%
   melt(measure.vars = c("tb_crtm", "tb_goes"), value.name = "tb") %>% 
   ggplot(aes(tb)) +
   geom_histogram(aes(fill = variable, y = ..density..), 
-                 position = "stack", alpha = 0.7,
+                 position = "identity", alpha = 0.7,
                  binwidth = 5) +
   facet_wrap(~ channel, scales = "free") +
   theme_minimal()
