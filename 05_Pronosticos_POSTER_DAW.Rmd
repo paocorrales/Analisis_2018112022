@@ -61,8 +61,8 @@ pp_imerg <- lapply(files, function(f) {
   start <- str_extract(str_extract(f, "S\\d{6}"), "\\d{6}")
   end <- str_extract(str_extract(f, "E\\d{6}"), "\\d{6}")
   
-  pp <- ReadNetCDF(f, vars = c(pp = "Grid/precipitationCal"), subset = list("Grid/lon" = -80:-50, 
-                                                                            "Grid/lat" = -45:-15)) %>% 
+  pp <- ReadNetCDF(f, vars = c(pp = "Grid/precipitationCal"), 
+                   subset = list("Grid/lon" = -80:-50,                                                                          "Grid/lat" = -45:-15)) %>% 
     .[, start_date := ymd_hms(paste(date, start))] %>% 
     .[, end_date := ymd_hms(paste(date, end))] %>% 
     .[]

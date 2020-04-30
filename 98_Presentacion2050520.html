@@ -110,29 +110,126 @@ class: center, inverse, middle
 # Analysis comparison
 
 ---
+name: rcrv-intro
+
+## Reduced Centered Random Variable
+
+
+The *Reduced Centered Random Variable* is defined as:
+
+$$ y = \frac{y^o - m}{\sqrt{\sigma_o^2 +\sigma^ 2}} $$
+The average of `\(y\)` compute over all the realizations represent the weighted bias between the ensemble and observation `\(b = E[y]\)`.
+
+The standar deviation of `\(y\)` is a measure of systematic over- or under- dispersion of the ensemble. It measure the agreement of the ensemble spread and the specific observational error with the observed amplitude of the forecast error `\(d = \sqrt{\frac{M}{M-1} E[(y-b)^2]}\)`
+
+A perfect system has no bias ( `\(b=0\)` ) and dispersion equal to 1 ( `\(d=1\)`, con `\(d&gt;1 \rightarrow underdispersive\)` y `\(d&lt;1 \rightarrow overdispersive\)`).
+
+
+&lt;!-- ```{r echo=FALSE} --&gt;
+&lt;!-- fread("rcrv_uvt_superficie_temporal.csv") %&gt;%  --&gt;
+&lt;!--   .[, date := ymd_hms(date)] %&gt;%  --&gt;
+&lt;!--   melt(measure.vars = c("mean.y", "sd.y")) %&gt;%  --&gt;
+&lt;!--   ggplot(aes(date, value)) + --&gt;
+&lt;!--   geom_hline(yintercept = c(0, 1), color = "darkgray") + --&gt;
+&lt;!--   geom_line(aes(color = factor(type), linetype = variable)) + --&gt;
+&lt;!--   scale_x_datetime(date_breaks = "6 hours", date_labels = "%H:%m %b %d") + --&gt;
+&lt;!--   facet_wrap(~var, ncol = 1, scales = "free_y") + --&gt;
+&lt;!--   labs(y = "Reduced Centered Random Variable", --&gt;
+&lt;!--        subtitle = "Surface observations", --&gt;
+&lt;!--        color = "Obs type", --&gt;
+&lt;!--        linetype = "") + --&gt;
+&lt;!--   theme_minimal() --&gt;
+
+&lt;!-- fread("rcrv_uvt_superficie.csv") %&gt;%  --&gt;
+&lt;!--   knitr::kable() --&gt;
+&lt;!-- ``` --&gt;
+
+---
+
+name: rcrv-box-wind
+
+### Wind 
+
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-3-1.png" width="1152" style="display: block; margin: auto;" /&gt;
+---
+name: rcrv-box-temp
+
+### Temperature
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-4-1.png" width="1152" style="display: block; margin: auto;" /&gt;
+
+
+---
+name: rcrv-profile
+
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-5-1.png" width="576" style="display: block; margin: auto;" /&gt;
+
+
+---
 name: mcape
 
 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-3-1.png" width="1008" style="display: block; margin: auto;" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-6-1.png" width="1008" style="display: block; margin: auto;" /&gt;
 
 ---
 name: temp
 
-
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-4-1.png" width="504" /&gt;
+.pull-left[ 
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-7-1.png" width="504" /&gt;
+]
+.pull-right[ 
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-8-1.png" width="504" /&gt;
+]
 
 ---
 
 name: hum
 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-5-1.png" width="504" /&gt;
+.pull-left[ 
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-9-1.png" width="504" /&gt;
 
+]
+
+.pull-right[ 
+
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-10-1.png" width="504" /&gt;
+]
+
+---
+name: hum-field
+
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-11-1.png" width="1008" style="display: block; margin: auto;" /&gt;
+---
+
+name: hum-diff
+
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-12-1.png" width="1008" style="display: block; margin: auto;" /&gt;
 
 
 ---
 class: inverse, center, middle
 
 # Forecast comparison
+
+---
+
+name: pp-acum
+
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-13-1.png" width="1008" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+name: pp-hov
+
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-14-1.png" width="1008" style="display: block; margin: auto;" /&gt;
+
+---
+
+Place holder for FSS
+
+---
+
+Place holder for sounding
 
 ---
     </textarea>
