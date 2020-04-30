@@ -1,0 +1,353 @@
+---
+title: "Using satellite data for evaluating and improving of high-resolution numerical forecasts of deep convective systems"
+#subtitle: "⚔<br/>with xaringan"
+author: "Paola Corrales"
+institute: "CIMA UBA-CONICET"
+date: "2020 05 05"
+output:
+  xaringan::moon_reader:
+    css: [default, "verde.css", default-fonts]
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: '16:9'
+---
+
+```{r setup, include=FALSE, eval=TRUE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(fig.retina = 3,
+                      cache=TRUE,
+                      echo=FALSE, 
+                      warning=FALSE)
+
+library(tidyverse)
+library(metR)
+library(data.table)
+library(lubridate)
+library(scattermore)
+source("help_functions.R")
+source("postprocesamiento.R")
+source("goes_functions.R")
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
+```
+
+class: inverse
+name: goals
+
+# General Goals
+
+The main goal is to contribute to the development of a system of short-term forecasting of events associated with deep wet convection in southeastern South America. The following specific objectives are proposed:
+
+--
+
+1. Assess different configurations of numerical models with explicit representation of convection, using radar and satellite data.
+
+--
+
+2. Improve the quality of initial conditions for explicit convection forecasts by assimilating conventional, satellite and radar data.
+
+---
+name: case
+
+# Case Study: November 22th, 2020
+
+.left-column[IOP08 (Severe, Upscale Growth handoff) of the RELAMPAGO field campaign] 
+
+.right-column[![gif](fig_poster/caso_20181122.gif)]
+
+---
+name: model-conf
+
+# Model and ensemble configuration
+.pull-left[ 
+- **Resolution:** 10 km.
+- **Initial and boundary conditions:** GFS (deterministic 0.5º)
+- **Ensemble:** 60 members with multi-physics and random perturbations. 
+- 9 combinations of Cumulis and PBL **parameterizations:**
+
+| Cumulus | PBL |
+|---|---|
+| KB | YSU |
+| GB | MYJ |
+| BMJ | MYNN2 |
+]
+
+.pull-right[ 
+```{r echo=FALSE, fig.width=7, fig.height=7}
+ReadNetCDF("/home/paola.corrales/datosmunin/EXP/E4/ANA/20181120180000/analysis.ensmean", 
+           vars = c("HGT", "XLAT", "XLONG")) %>% 
+  setnames(c("HGT", "XLAT", "XLONG"), c("hgt", "lat", "lon")) %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = hgt), size = 5) +
+  scale_color_distiller(name = NULL, 
+                        type = "seq", 
+                        palette = "RdYlGn", 
+                        direction = -1,
+                        guide = guide_colorstrip(barwidth = 20, 
+                                      barheight = 0.8)) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, size = 0.5) +
+  coord_sf(ylim = c(-41, -20), xlim = c(-75, -52.5)) +
+  labs(
+       subtitle = "Model domain",
+       x = "Longitude", 
+       y = "Latitude") +
+  theme_minimal(base_size = 16) +
+  theme(legend.position = "bottom") 
+```
+
+]
+
+---
+name: cycle
+background-image: url("fig/analysis_cycle.svg")
+background-position: center
+background-size: cover
+
+# Assimilation Cycle
+
+---
+name: exp-config
+
+# Experiments configuration
+
+.pull-left[
+
+
+| Obs type | CONV | AUT | SATWND |
+|:---:|:---:|:---:|:---:|
+| ADPSFC | ✔ ️| ✔️ |  ✔️ |
+| AUTSFC |   | ✔️ | ✔️ |
+| ADPUPA | ✔  | ✔ ️|✔️ |
+| AIRCFT | ✔️ | ✔ | ✔️  |
+| AIRCAR | ✔️ | ✔ | ✔️  |
+| SFCSHP | ✔️ | ✔  | ✔️  |
+| ASCATW | ✔️ | ✔ | ✔️  |
+| SATWND |   |   | ✔️  |
+
+
+]
+
+
+.pull-right[ 
+```{r echo=FALSE}
+dominio <- ReadNetCDF("/home/paola.corrales/datosmunin/EXP/E4/ANA/20181120180000/analysis.ensmean", vars = c("XLAT", "XLONG")) %>% 
+  setnames(c("XLAT", "XLONG"), c("lat", "lon"))
+
+square <- dominio %>% 
+  copy() %>% 
+  .[, square1 := west_east %in% range(west_east) , by = .(south_north)] %>% 
+  .[, square2 := south_north %in% range(south_north) , by = .(west_east)] %>% 
+  .[square1 | square2] 
+
+
+obsAUT <- lapply(Sys.glob("analisis/diagfiles/E5/asim*ensmean"), function(f) {
+  date_time <- ymd_hms(substr(basename(f), 11, 24))
+  ens <- substr(basename(f), 29, 32)
+  fread(f, na.strings = c("0.100E+11", "-0.100E+06", "-99999.90", "-100000.00")) %>% 
+    .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  .[, c("V2", "V4") := NULL] 
+
+colnames(obsAUT) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "date.time", "ens") 
+
+
+obsCONV <- lapply(Sys.glob("analisis/diagfiles/E4/asim*ensmean"), function(f) {
+  date_time <- ymd_hms(substr(basename(f), 11, 24))
+  ens <- substr(basename(f), 29, 32)
+  fread(f, na.strings = c("0.100E+11", "-0.100E+06", "-99999.90", "-100000.00")) %>% 
+    .[, date.time := date_time] %>% 
+    .[, ens := ens] %>% 
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  .[, c("V2", "V4") := NULL] 
+
+colnames(obsCONV) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "date.time", "ens") 
+
+
+oficiales <- obsCONV[type != 290, unique(stationID)]
+
+no_oficiales <- unique(obsAUT, by = c("stationID")) %>% 
+  .[type != 290] %>% 
+  .[!str_detect(stationID, "SMN")] %>%
+  .[!stationID %in% oficiales & type != 290, stationID]
+
+unique(obsAUT, by = c("stationID")) %>% 
+  .[type != 290] %>% 
+  .[!str_detect(stationID, "SMN")] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_sf(data = map, fill = NA, color = "black", inherit.aes = FALSE, , size = 0.5) +
+  geom_point(alpha = 0.8, size = 2,
+             aes(color = stationID %in% oficiales)) +
+  scale_color_manual(name =  NULL, values = c("TRUE" = "#FD8002", "FALSE" = "#367DB7"),
+                     breaks = c("FALSE", "TRUE"),
+                     labels = c("Non-official (N = 820)","Official (N = 327)"))+
+  geom_point(data = square, aes(lon, lat), size = 0.8) +
+  coord_sf(ylim = c(-42, -19), xlim = c(-76, -51)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Longitude", y = "Latitude") +
+  theme_minimal(base_size = 16) + 
+  theme(legend.position = "bottom")
+```
+
+
+]
+---
+class: center, inverse, middle
+
+# Analysis comparison
+
+---
+name: mcape
+
+
+```{r echo=FALSE, warning=FALSE, fig.align="center", fig.height=9, fig.width=14}
+files <- list.files("analisis/mucape", full.names = TRUE) 
+files <- files[-grep("E3", files)]
+
+cape <- lapply(files, function(file) {
+  details <- unglue::unglue(file, "analisis/mucape/mcape_ana_{exp}_{date}.nc")[[1]]
+  
+  ReadNetCDF(file, vars = c(value = "cape_2d")) %>% 
+    .[, `:=`(exp = details$exp, 
+             date = lubridate::ymd_hms(details$date))] %>%
+    setnames(old = "mcape_mcin_lcl_lfc", new = "variable") %>% 
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  .[variable %in% c("mcape", "mcin")] %>% 
+      .[!is.finite(value), value := 0] 
+
+coord <- ReadNetCDF(files[1], vars = c(lon = "XLONG")) %>% 
+  .[, lat := ReadNetCDF(files[1], vars = c(lat = "XLAT"))$lat]
+
+interpol <- function(x, y, z, ...) {
+  IL <- interp::interp(x, y, z, ...)
+  CJ(y = IL$y, x = IL$x)[, z := c(IL$z)] 
+}
+
+cape[date %in% ymd_h(c("2018-11-22 00",
+                       #"2018-11-22 03", 
+                       "2018-11-22 06"))] %>% 
+  .[coord, on = .NATURAL] %>% 
+  .[, interpol(lon, lat, value, nx = 50, ny = 50), by = .(date, exp, variable)] %>% 
+  setnames(c("x", "y", "z"), c("lon", "lat", "value")) %>%
+  dcast(lat + lon + exp + date ~ variable) %>% 
+  na.omit() %>% 
+  .[, date := factor(date)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_contour_fill(aes(z = round(mcape, 6)), na.fill = 0) +
+  # geom_contour2(data = function(d) dcast(d, lat + lon + date ~ exp, value.var = "value")[, dif := E3 - E4],
+  #   aes(z = dif), bins = 5)+
+  scale_fill_distiller(name = "MCAPE", palette = "YlOrRd", direction = 1, 
+                       # breaks = seq(500, 5000, 500),
+                       guide = guide_colorstrip(barwidth = 30,
+                                                barheight = 0.8)) +
+  ggnewscale::new_scale_fill() +
+  scale_color_viridis_d() +
+    geom_contour_filled(aes(z = mcin), alpha = 0.4, breaks = c(300, 1000), fill = "grey30") +
+  # geom_contour(aes(z = mcin), na.fill = 0, size = 0.5, color = "blue", 
+  #              breaks = c(300)) +
+  geom_mapa() +
+  
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_grid(date ~ exp, labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  labs(fill = "MCAPE",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_minimal(base_size = 16) +
+  theme(legend.position = "bottom", 
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+
+```
+
+---
+name: temp
+
+
+```{r}
+perfil_lev_E6 <- fread("analisis/perfil_lev_T_Q_ana_E6.csv") %>% 
+  .[, date := ymd_hms(date)] 
+
+perfil_lev_E4 <- fread("analisis/perfil_lev_T_Q_ana_E4.csv") %>% 
+  .[, date := ymd_hms(date)] 
+
+perfil_lev_E5 <- fread("analisis/perfil_lev_T_Q_ana_E5.csv") %>% 
+  .[, date := ymd_hms(date)] 
+
+
+perfil_lev_E4[perfil_lev_E5, on = c("lev", "date")] %>%
+  .[] %>% 
+  .[, `:=`(diff_T = i.T - T,
+           diff_Q = i.QVAPOR - QVAPOR)] %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = diff_T), breaks = seq(-1, 1, 0.2)) +
+  scale_fill_divergent(name = NULL,
+                       breaks = seq(-1, 1, 0.2),
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 35,
+                                                barheight = 0.8)) +
+  labs(title = "Temperature difference (K)",
+       subtitle = "CONV+AUT OK - CONV",
+       x = "Time",
+       y = "Pressure level") +
+  scale_y_level(name = "Pressure level", breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
+  scale_x_datetime(expand = c(0,0), date_labels = "%HZ \n %b-%d", date_breaks = "12 hours") +
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
+---
+
+name: hum
+
+```{r}
+perfil_lev_E4[perfil_lev_E5, on = c("lev", "date")] %>%
+  .[] %>% 
+  .[, `:=`(diff_T = i.T - T,
+           diff_Q = i.QVAPOR - QVAPOR)] %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = diff_Q*1000), breaks = seq(-0.0004, 0.0016, 0.0002)*1000) +
+  scale_fill_divergent(name = NULL,
+                       breaks = seq(-0.0004, 0.0016, 0.0002)*1000,
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 35,
+                                                barheight = 0.8)) +
+
+  scale_y_level(name = "Pressure level", breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
+  scale_x_datetime(expand = c(0,0), date_labels = "%HZ \n %b-%d", date_breaks = "12 hours") +
+  labs(title = "Humidity difference (g/Kg)",
+       subtitle = "CONV+AUT - CONV",
+       y = "Pressure level",
+       x = "Time") +
+  theme_minimal(base_size = 26) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+
+```
+
+
+
+---
+class: inverse, center, middle
+
+# Forecast comparison
+
+---

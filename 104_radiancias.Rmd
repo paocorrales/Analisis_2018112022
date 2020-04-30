@@ -106,7 +106,6 @@ tb_crtm %>%
   theme(panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3)) 
 ```
-
 ## Aire claro
 
 ```{r echo=FALSE}
