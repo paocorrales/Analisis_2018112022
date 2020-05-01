@@ -234,6 +234,7 @@ En cajas
 
 ```{r}
 # rcrv_box <- perfiles %>%
+#   .[!(stationID %in% c("MDZDACC2", "WUNIVICU", "BLVX034", "WUNISANP"))] %>% 
 #   .[, ":="(lon.box = cut_round(lon, breaks = seq(284, 309, 2.5)),
 #            lat.box = cut_round(lat, breaks = seq(-42, -17, 2.5)))] %>%
 #   .[usage.flag == 1 & !is.na(obs)] %>%
@@ -244,7 +245,9 @@ En cajas
 #         sd.y = sd(y, na.rm = TRUE)), by = .(var, type, lat.box, lon.box)]
 # fwrite(rcrv_box, "uvt_rcrv_box.csv")
 
-fread("uvt_rcrv_box.csv") %>% 
+ 
+  
+fread("uvt_rcrv_box.csv") %>%   
   .[var %in% c("u", "v")] %>% 
   .[, type.obs := type] %>% 
   ggplot(aes(ConvertLongitude(lon.box), lat.box)) +
