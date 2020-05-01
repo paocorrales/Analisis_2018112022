@@ -251,7 +251,28 @@ name: rcrv-box-wind
 
 ```{r fig.align="center", fig.height=9, fig.width=16}
 
-fread("uvt_rcrv_box.csv") %>% 
+obs.type <- tribble(
+  ~type, ~code,
+  120, "ADPUPA",
+  130, "AIRCFT-AIREP",
+  131, "AIRCFT-AMDAR",
+  133, "AIRCAR",
+  180, "SFCSHP",
+  181, "ADPSFC",
+  187, "ADPSFC-w/o p",
+  220, "ADPUPA",
+  221, "ADPUPA-PIBAL",
+  230, "AIRCFT-AIREP",
+  231, "AIRCFT-AMDAR",
+  233, "AIRCAR",
+  280, "SFCSHP",
+  281, "ADPSFC",
+  287, "ADPSFC-w/o p",
+  290, "ASCATW"
+) %>% 
+  setDT()
+
+obs.type[fread("uvt_rcrv_box.csv"), on = "type"] %>% 
   .[var %in% c("u", "v")] %>% 
   .[, type.obs := type] %>% 
   ggplot(aes(ConvertLongitude(lon.box), lat.box)) +
@@ -264,7 +285,7 @@ fread("uvt_rcrv_box.csv") %>%
                        guide = guide_colorstrip(inside = TRUE,
                                                 barwidth = 20,
                                                 barheight = 0.8)) +
-  facet_grid(var~type.obs) +
+  facet_grid(var~code) +
   labs(
        caption = "Calculated over 2.5ºx2.5º boxes",
        x = "",
@@ -280,7 +301,8 @@ name: rcrv-box-temp
 
 ### Temperature
 ```{r fig.align="center", fig.height=9, fig.width=16}
-fread("uvt_rcrv_box.csv") %>% 
+
+obs.type[fread("uvt_rcrv_box.csv"), on = "type"] %>% 
   .[var %in% c("t")] %>% 
   .[, type.obs := type] %>% 
   ggplot(aes(ConvertLongitude(lon.box), lat.box)) +
@@ -293,7 +315,7 @@ fread("uvt_rcrv_box.csv") %>%
                        guide = guide_colorstrip(inside = TRUE,
                                                 barwidth = 20,
                                                 barheight = 0.8)) +
-  facet_grid(var~type.obs) +
+  facet_grid(var~code) +
   labs(
        caption = "Calculated over 2.5ºx2.5º boxes",
        x = "",
@@ -310,14 +332,17 @@ fread("uvt_rcrv_box.csv") %>%
 name: rcrv-profile
 
 ```{r echo=FALSE, fig.align="center", fig.width=8, fig.height=8}
-fread("rcrv_uvt_perfil.csv") %>% 
+obs.type[fread("rcrv_uvt_perfil.csv"), on = "type"] %>% 
+  .[type != 130] %>% 
   melt(measure.vars = c("mean.y", "sd.y")) %>% 
   ggplot(aes(nivel.error, value)) +
   geom_hline(yintercept = c(0, 1), color = "darkgrey") +
-  geom_line(aes(color = factor(type), linetype = variable)) +
+  geom_line(aes(color = factor(code), linetype = variable)) +
+  scale_color_brewer(palette = "Set1") +
+  scale_linetype_manual(values=c("dashed", "solid")) +
   scale_x_level() +
   coord_flip() +
-  facet_wrap(~ var, scales = "free_x") +
+  facet_wrap(~ var) +
   labs(y = "Reduced Centered Random Variable",
        subtitle = "Sounding and aircraft observations",
        linetype = "",
@@ -374,18 +399,19 @@ cape[date %in% ymd_h(c("2018-11-22 00",
                                                 barheight = 0.8)) +
   ggnewscale::new_scale_fill() +
   scale_color_viridis_d() +
-  geom_contour_filled(aes(z = mcin), alpha = 0.4, breaks = c(300, 1000), fill = "grey30") +
-  # geom_contour(aes(z = mcin), na.fill = 0, size = 0.5, color = "blue", 
-  #              breaks = c(300)) +
+  geom_contour_filled(aes(z = mcin), alpha = 0.1, breaks = c(100, 3000), fill = "black") +
+  # geom_contour(aes(z = mcin), na.fill = 0, size = 0.5, color = "blue",
+  #              breaks = c(100, 500)) +
   geom_mapa() +
   
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   facet_grid(date ~ exp, labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
-  labs(fill = "MCAPE",
+  labs(fill = "",
        x = "Longitude",
-       y = "Latitude") +
+       y = "Latitude",
+       caption = "MCAPE in colors, MCIN over 100 J/kg on darker areas") +
   theme_minimal(base_size = 16) +
   theme(legend.position = "bottom", 
         panel.ontop = TRUE,
@@ -613,7 +639,7 @@ class: inverse, center, middle
 
 name: pp-acum
 
-```{r fig.align="center", fig.height=9, fig.width=14}
+```{r fig.align="left", fig.width=3}
 files <- Sys.glob("../datosmunin2/IMERG_20181122/*")
 
 pp_imerg <- lapply(files, function(f) {
@@ -635,6 +661,30 @@ pp_imerg_acum <- pp_imerg %>%
                            as_datetime("2018-11-23 11:30:00")), 
                           .(pp = sum(pp)), by = .(lon, lat)]
 
+pp_imerg_acum[pp > 10] %>% 
+  ggplot(aes(lon, lat)) +
+  
+  geom_contour_fill(aes(z = pp), na.fill = 0,
+               breaks = seq(0, 300, 50),
+               size = 0.7) +
+  scale_fill_distiller("IMERG", type = "seq", palette = "Blues", direction = 1,
+                        breaks = seq(0, 300, 50),
+                        guide = guide_colorstrip(inside = TRUE,
+                                                 barwidth = 8,
+                                                barheight = 0.6)) +
+  geom_mapa() +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+    labs(#title = "Accumulated precipitation",
+       #subtitle = "11/22 06Z to 11/23 12Z",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom",
+        panel.grid = element_line(linetype = 3))
+```
+
+
+```{r fig.align="right", fig.height=9, fig.width=10}
 fcsts <- expand_grid(fcsts = c("20181122000000", "20181122060000"),                     
                      exp = c("E4", "E5", "E6"))
 
@@ -664,14 +714,14 @@ pp_inter %>%
                        breaks = seq(0, 300, 50),
                        guide = guide_colorstrip(barwidth = 20,
                                                 barheight = 0.7)) +
-  geom_contour(data = pp_imerg_acum, aes(z = pp, color = ..level..), 
-               breaks = seq(0, 300, 50),
-               size = 0.7) +
-  scale_color_viridis_c("IMERG", direction = -1,
-                        breaks = seq(0, 300, 50),
-                        guide = guide_colorstrip(inside = TRUE,
-                                                 barwidth = 20,
-                                                barheight = 0.8)) +
+  # geom_contour(data = pp_imerg_acum, aes(z = pp, color = ..level..), 
+  #              breaks = seq(0, 300, 50),
+  #              size = 0.7) +
+  # scale_color_viridis_c("IMERG", direction = -1,
+  #                       breaks = seq(0, 300, 50),
+  #                       guide = guide_colorstrip(inside = TRUE,
+  #                                                barwidth = 20,
+  #                                               barheight = 0.8)) +
   geom_mapa() +
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   facet_grid(init_date ~ exp, 
@@ -736,7 +786,7 @@ pp_hov_acum[coord[south_north == 120, .(west_east, lon)], on = c("west_east")] %
   geom_contour(data = pp_imerg_hr, aes(z = pp, color = ..level..), 
                breaks = seq(0, 20, 3),
                size = 0.7) +
-  scale_color_viridis_c("IMERG", direction = -1,
+  scale_color_distiller("IMERG", palette = "Blues", direction = 1,
                         breaks = seq(0, 20, 3),
                         guide = guide_colorstrip(inside = TRUE,
                                                  barwidth = 20,
