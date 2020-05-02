@@ -286,8 +286,8 @@ read_radiosonde_relampago <- function(file){
                          "launch_time", "mixr", "ptmp")
     }
     if (site == "Sao Borja, Brazil") {
-      out <- out[, ":="(lon = nafill(lon, "locf"),
-                        lat = nafill(lat, "locf"))]
+      out <- out[, ":="(lon = data.table::nafill(lon, "locf"),
+                        lat = data.table::nafill(lat, "locf"))]
     }
 
     soundings[[i]] <- out

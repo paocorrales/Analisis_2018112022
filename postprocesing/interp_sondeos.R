@@ -32,7 +32,9 @@ for (f in files) {
   message(paste("Procesando :", f))
   
   descriptores <- unglue::unglue(f, c("/glade/scratch/jruiz/EXP/{exp}/FCST/{fcst}/{member}/wrfout_d01_{date}.mean", "/glade/scratch/jruiz/EXP/{exp}/FCST/{fcst}/{member}/wrfout_d01_{date}"))
-  
+  if (as.numeric(descriptores[[1]][["member"]]) <= 16) {
+	next
+}
   # Leo pronóstico con algo de post procesamiento
   fcst <- ReadNetCDF(f, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 
                                  lon = "XLONG", lat = "XLAT")) %>%
