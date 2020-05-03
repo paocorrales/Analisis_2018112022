@@ -64,7 +64,7 @@ bench::bench_time({
   
   subset <- sondeos[time %within% intervalo] %>% 
     .[, c("xp", "yp") := wrf_project(lon, lat, round = FALSE)]
-
+  
   unique_subset <- subset %>% unique(by = c("lat", "lon"))
   # unique_subset <- subset %>% unique(by = c("site", "launch_time"))
   
@@ -78,7 +78,7 @@ bench::bench_time({
   # proj4::ptransform(list(projection$lon/180*pi, projection$lat/180*pi), 
   #                   # "+proj=lonlat", map_proj)
   
- fcst_obs <- purrr::map(unique_site$site, function(x) {
+  fcst_obs <- purrr::map(unique_site$site, function(x) {
     rx <- range(unique_subset[site == x]$lon, na.rm = TRUE) + c(-1, 1)
     ry <- range(unique_subset[site == x]$lat, na.rm = TRUE) + c(-1, 1)
     out <- fcst %>% 
@@ -133,7 +133,7 @@ bench::bench_time({
     }
     
   }
-
+  
   
   subset <- subset %>% 
     melt(measure.vars = c("t", "td", "rh", "u", "v")) %>% 
@@ -163,10 +163,10 @@ subset[variable %in% c("t", "td"), fcst_value := fcst_value -273.15] %>%
 
 ```{r}
 regular_sondeos <- fread("/home/paola.corrales/datosmunin/sondeos.csv") %>% 
-    .[,  regular_fcst := if_else(variable %in% c("t", "td"), 
-                                    regular_fcst -273.15, regular_fcst)] %>% 
-    .[,  regular_fcst_mean := mean(regular_fcst, na.rm = TRUE), 
-      by = .(variable, regular_p, launch_time)] %>% 
+  .[,  regular_fcst := if_else(variable %in% c("t", "td"), 
+                               regular_fcst -273.15, regular_fcst)] %>% 
+  .[,  regular_fcst_mean := mean(regular_fcst, na.rm = TRUE), 
+    by = .(variable, regular_p, launch_time)] %>% 
   .[, launch_time := lubridate::ymd_hms(launch_time)]
 
 regular_sondeos %>% 
@@ -243,21 +243,77 @@ regular_sondeos[variable != "rh"] %>%
   facet_grid(medida ~  variable) +
   labs(caption = "average over time")
 ```
+```{r}
+files <- list.files(path = "analisis/sondeos/det20181122000000/", full.names = TRUE)
 
+regular_p <- seq(10, 1015, 5)
 
-```{r eval=FALSE, include=FALSE}
-library(reticulate)
+sondeos <- purrr::map(files, function(f) {
+  
+  str <- unglue::unglue(basename(f), "sondeo_{exp}_det{time}.csv")
+  
+  out <- fread(f) %>%
+    # .[, ens := str[[1]][["member"]]] %>%
+    .[, ":="(ele = NULL,
+             azi = NULL,
+             qp = NULL,
+             qt = NULL,
+             qrh = NULL,
+             qu = NULL,
+             qv = NULL,
+             qdZ = NULL)] %>% 
+    setnames(c("value"), c("obs_value")) %>% 
+    .[]
+  
+}) %>% rbindlist(fill = TRUE) %>% 
+  .[,  fcst_value := if_else(variable %in% c("t", "td"), 
+                             fcst_value -273.15, fcst_value)] %>% 
+  .[, .(regular_obs = approx(p, obs_value, regular_p)$y,
+        regular_fcst = approx(p, fcst_value, regular_p)$y,
+        regular_p = regular_p,
+        lon = lon[1],
+        lat = lat[1]), by = .(launch_time, site, exp, variable)] %>%
+  .[,  regular_fcst_mean := mean(regular_fcst, na.rm = TRUE),
+    by = .(variable, regular_p, launch_time, exp)] %>% 
+  .[, launch_time := lubridate::ymd_hms(launch_time)]
 
-wrf <- import("wrf")
-ncdf <- import("netCDF4")
+sondeos[variable != "rh" & !is.na(regular_fcst)] %>%
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, exp)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, linetype = exp, group = interaction(exp, variable))) +
+  scale_color_viridis_d() +
+  scale_linetype(name = "experiment", labels = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND")) +
+  scale_y_level() +
+  facet_wrap( ~ medida, scales = "free_x", 
+              labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
+  labs(subtitle = "Forecast 22/11 00Z to 23/11 12Z",
+       # subtitle = "CONV experiment",
+       x = "") +
+  theme_minimal()
 
-fcst1 <-  ncdf$Dataset(ncfile)
-
-image(wrf$getvar(fcst1, "uvmet", meta = FALSE)[2, 1, , ])
-
-
-T <- wrf$getvar(fcst1, "tk" , meta = FALSE)
-
-TD <- wrf$getvar(fcst1, "td", meta = FALSE)
+sondeos[variable != "rh" & !is.na(regular_fcst) & regular_p %between% c(800, 1000)] %>%
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, exp)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, linetype = exp, group = interaction(exp, variable))) +
+  scale_color_viridis_d() +
+  scale_linetype(name = "experiment", labels = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND")) +
+  scale_y_level() +
+  facet_wrap( ~ medida, scales = "free_x", 
+              labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
+  labs(subtitle = "Forecast 22/11 00Z to 23/11 12Z",
+       # subtitle = "CONV experiment",
+       x = "") +
+  # coord_cartesian(ylim = c(750, 1000)) +
+  theme_minimal()
 ```
+
+
 

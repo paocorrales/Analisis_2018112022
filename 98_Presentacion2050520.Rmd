@@ -1009,13 +1009,198 @@ pp_hov_acum[coord[south_north == 120, .(west_east, lon)], on = c("west_east")] %
 Place holder for FSS
 
 ---
+## Comparison with RELAMPAGO sounding
 
-Place holder for sounding
+```{r}
+files <- list.files(path = "analisis/sondeos/det20181122000000/", full.names = TRUE)
+
+regular_p <- seq(10, 1015, 5)
+
+sondeos <- purrr::map(files, function(f) {
+  
+  str <- unglue::unglue(basename(f), "sondeo_{exp}_det{time}.csv")
+  
+  out <- fread(f) %>%
+    # .[, ens := str[[1]][["member"]]] %>%
+    .[, ":="(ele = NULL,
+             azi = NULL,
+             qp = NULL,
+             qt = NULL,
+             qrh = NULL,
+             qu = NULL,
+             qv = NULL,
+             qdZ = NULL)] %>% 
+    setnames(c("value"), c("obs_value")) %>% 
+    .[]
+  
+}) %>% rbindlist(fill = TRUE) %>% 
+  .[,  fcst_value := if_else(variable %in% c("t", "td"), 
+                             fcst_value -273.15, fcst_value)] %>% 
+  .[, .(regular_obs = approx(p, obs_value, regular_p)$y,
+        regular_fcst = approx(p, fcst_value, regular_p)$y,
+        regular_p = regular_p,
+        lon = lon[1],
+        lat = lat[1]), by = .(launch_time, site, exp, variable)] %>%
+  .[,  regular_fcst_mean := mean(regular_fcst, na.rm = TRUE),
+    by = .(variable, regular_p, launch_time, exp)] %>% 
+  .[, launch_time := lubridate::ymd_hms(launch_time)]
+
+
+dominio <- ReadNetCDF("/home/paola.corrales/datosmunin/EXP/E4/ANA/20181120180000/analysis.ensmean", vars = c("XLAT", "XLONG")) %>% 
+  setnames(c("XLAT", "XLONG"), c("lat", "lon"))
+
+square <- dominio %>% 
+  copy() %>% 
+  .[, square1 := west_east %in% range(west_east) , by = .(south_north)] %>% 
+  .[, square2 := south_north %in% range(south_north) , by = .(west_east)] %>% 
+  .[square1 | square2] 
+
+square %>% 
+  ggplot(aes(lon, lat)) +
+  geom_sf(data = map, fill = NA, color = "black", inherit.aes = FALSE, , size = 0.5) +
+  geom_point(alpha = 0.8, size = 1) +
+  geom_point(data = unique(sondeos, by = "site"), 
+             aes(lon, lat), size = 1.5, color = "#00695c") +
+  coord_sf(ylim = c(-42, -19), xlim = c(-76, -51)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Longitude", y = "Latitude") +
+  theme_minimal(base_size = 16) + 
+  theme(legend.position = "bottom")
+```
 
 ---
-clase: inverse
+name: sounding-00Z
+
+.pull-left[
+```{r}
+sondeos[variable != "rh" & !is.na(regular_fcst)] %>%
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, exp)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, linetype = exp, group = interaction(exp, variable))) +
+  scale_color_viridis_d() +
+  scale_linetype(name = "experiment", labels = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND")) +
+  scale_y_level() +
+  facet_wrap( ~ medida, scales = "free_x", 
+              labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
+  labs(subtitle = "Forecast 22/11 00Z to 23/11 12Z",
+       x = "") +
+  theme_minimal(base_size = 16)
+```
+]
+
+.pull-right[
+```{r}
+sondeos[variable != "rh" & !is.na(regular_fcst) & regular_p %between% c(800, 1000)] %>%
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, exp)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, linetype = exp, group = interaction(exp, variable))) +
+  scale_color_viridis_d() +
+  scale_linetype(name = "experiment", labels = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND")) +
+  scale_y_level() +
+  facet_wrap( ~ medida, scales = "free_x", 
+              labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
+  labs(subtitle = "Low levels",
+       x = "") +
+  theme_minimal(base_size = 16)
+```
+
+]
+
+---
+name: sounding-06Z
+
+.pull-left[
+```{r}
+files <- list.files(path = "analisis/sondeos/det20181122060000/", full.names = TRUE)
+
+regular_p <- seq(10, 1015, 5)
+
+sondeos <- purrr::map(files, function(f) {
+  
+  str <- unglue::unglue(basename(f), "sondeo_{exp}_det{time}.csv")
+  
+  out <- fread(f) %>%
+    # .[, ens := str[[1]][["member"]]] %>%
+    .[, ":="(ele = NULL,
+             azi = NULL,
+             qp = NULL,
+             qt = NULL,
+             qrh = NULL,
+             qu = NULL,
+             qv = NULL,
+             qdZ = NULL)] %>% 
+    setnames(c("value"), c("obs_value")) %>% 
+    .[]
+  
+}) %>% rbindlist(fill = TRUE) %>% 
+  .[,  fcst_value := if_else(variable %in% c("t", "td"), 
+                             fcst_value -273.15, fcst_value)] %>% 
+  .[, .(regular_obs = approx(p, obs_value, regular_p)$y,
+        regular_fcst = approx(p, fcst_value, regular_p)$y,
+        regular_p = regular_p,
+        lon = lon[1],
+        lat = lat[1]), by = .(launch_time, site, exp, variable)] %>%
+  .[,  regular_fcst_mean := mean(regular_fcst, na.rm = TRUE),
+    by = .(variable, regular_p, launch_time, exp)] %>% 
+  .[, launch_time := lubridate::ymd_hms(launch_time)]
+
+sondeos[variable != "rh" & !is.na(regular_fcst)] %>%
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, exp)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, linetype = exp, group = interaction(exp, variable))) +
+  scale_color_viridis_d() +
+  scale_linetype(name = "experiment", labels = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND")) +
+  scale_y_level() +
+  facet_wrap( ~ medida, scales = "free_x", 
+              labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
+  labs(subtitle = "Forecast 22/11 06Z to 23/11 12Z",
+       x = "") +
+  theme_minimal(base_size = 16)
+```
+]
+
+.pull-right[
+```{r}
+sondeos[variable != "rh" & !is.na(regular_fcst) & regular_p %between% c(800, 1000)] %>%
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, exp)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, linetype = exp, group = interaction(exp, variable))) +
+  scale_color_viridis_d() +
+  scale_linetype(name = "experiment", labels = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND")) +
+  scale_y_level() +
+  facet_wrap( ~ medida, scales = "free_x", 
+              labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
+  labs(subtitle = "Low levels",
+       x = "") +
+  theme_minimal(base_size = 16)
+```
+]
+
+---
+class: inverse
 name: future
 
 # Future work
 
-- doctorarme
+- Assimilate:
+  - satellite radiance/brightness temperature observation from several instruments/satellites
+  - Doppler radar radial velocities ?
+  - Radar reflectivity
+- Evaluate the impact of the model resolution
