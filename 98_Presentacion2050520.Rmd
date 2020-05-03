@@ -64,7 +64,12 @@ name: case
 }
 ```
 
-.left-column[IOP08 (Severe, Upscale Growth handoff) of the RELAMPAGO field campaign] 
+.left-column[
+IOP08 
+- Severe, 
+- Upscale Growth handoff
+
+of the RELAMPAGO field campaign] 
 
 .right-column[![gif](fig/caso_20181122.gif)]
 
@@ -75,8 +80,8 @@ name: model-conf
 .pull-left[ 
 - **Resolution:** 10 km.
 - **Initial and boundary conditions:** GFS (deterministic 0.5º)
-- **Ensemble:** 60 members with multi-physics and random perturbations. 
-- 9 combinations of Cumulis and PBL **parameterizations:**
+- **Ensemble:** 60 members with multi-physics squeme and random perturbations. 
+  - 9 combinations of Cumulis and PBL **parameterizations:**
 
 | Cumulus | PBL |
 |---|---|
@@ -404,6 +409,8 @@ cape[date %in% ymd_h(c("2018-11-22 00",
 
 ---
 name: subdominio
+
+## Vertical structure 
 
 ```{r}
 dominio <- ReadNetCDF("/home/paola.corrales/datosmunin/EXP/E4/ANA/20181120180000/analysis.ensmean", vars = c("XLAT", "XLONG")) %>% 
@@ -966,7 +973,7 @@ pp_hov <- lapply(seq_len(nrow(fcsts)), function(f) {
 pp_hov_acum <- copy(pp_hov)[, `:=`(hora = hour(date),
                                dia = day(date))] %>% 
   .[, .(pp = sum(pp_10)), by = .(hora, dia, west_east, fcst, exp)] %>% 
-  .[, date := make_datetime(2018, 11, dia, hora)]
+  .[, date := make_datetime(2018, 11, dia, hora + 1)]
 
 pp_hov_acum[coord[south_north == 120, .(west_east, lon)], on = c("west_east")] %>% 
   .[, fcst := factor(fcst)] %>% 
@@ -1006,7 +1013,23 @@ pp_hov_acum[coord[south_north == 120, .(west_east, lon)], on = c("west_east")] %
 
 ---
 
-Place holder for FSS
+### FSS
+
+```{r fig.align="center", fig.width=8, fig.height=7}
+fread("fss_3hr.csv") %>% 
+  .[, date := as_datetime(date)] %>% 
+  # .[w == 4] %>% 
+  ggplot(aes(date, fss)) +
+  geom_hline(yintercept = 1, color = "grey30") +
+  geom_path(aes(color = exp, linetype = factor(init_date), group = interaction(exp, w, q, init_date))) +
+  scale_linetype(name = NULL, labels = c("2018-11-22T00:00:00Z" = "Init 00Z",
+                                         "2018-11-22T06:00:00Z" = "Init 06Z")) +
+  scale_color_viridis_d(labels = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND")) +
+  scale_x_datetime(date_labels = "%HZ", date_breaks = "6 hours", expand = c(0, 0)) +
+  facet_grid(q ~ w, labeller = labeller(w = c("4" = "~90 km", "40" = "~800 km"), 
+                                        q = c("1" = "1 mm", "25" = "25 mm"))) +
+  theme_minimal(base_size = 16)
+```
 
 ---
 ## Comparison with RELAMPAGO sounding
@@ -1199,8 +1222,24 @@ name: future
 
 # Future work
 
-- Assimilate:
-  - satellite radiance/brightness temperature observation from several instruments/satellites
+**Next steps**
+
+- Run a new experiment assimilating Satellite radiance/brightness temperature observations (I have to learn how to do it first!)
+- Run and analyze ensembles forecast inicialized from each experiment
+- Validation of forecasts using observations from the RELAMPAGO campaign
+
+--
+
+**Things for the future**
+
+- Evaluate the impact of the model resolution / Data assimilation with explicit convection
+- Study of increased predictability of deep convection from satellite data assimilation
+- Assimilate new observation from:
+  - GPS Radio occultation (RO) refractivity ?
   - Doppler radar radial velocities ?
-  - Radar reflectivity
-- Evaluate the impact of the model resolution
+  - Radar reflectivity ?
+
+???
+
+Estudio del incremento de la predictibilidad de la convección profunda en los casos seleccionados a partir de la inclusión de los datos de satélite. Se utilizará la técnica Ensemble Sensitivity to Observations (EFSO, Kalnay et al. 2012) para determinar el impacto relativo de los diferentes conjuntos de observaciones en la calidad de los análisis y pronósticos a corto plazo
+---
