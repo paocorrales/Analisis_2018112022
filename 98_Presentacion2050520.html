@@ -48,7 +48,12 @@ name: case
 }
 &lt;/style&gt;
 
-.left-column[IOP08 (Severe, Upscale Growth handoff) of the RELAMPAGO field campaign] 
+.left-column[
+IOP08 
+- Severe, 
+- Upscale Growth handoff
+
+of the RELAMPAGO field campaign] 
 
 .right-column[![gif](fig/caso_20181122.gif)]
 
@@ -59,8 +64,8 @@ name: model-conf
 .pull-left[ 
 - **Resolution:** 10 km.
 - **Initial and boundary conditions:** GFS (deterministic 0.5º)
-- **Ensemble:** 60 members with multi-physics and random perturbations. 
-- 9 combinations of Cumulis and PBL **parameterizations:**
+- **Ensemble:** 60 members with multi-physics squeme and random perturbations. 
+  - 9 combinations of Cumulis and PBL **parameterizations:**
 
 | Cumulus | PBL |
 |---|---|
@@ -155,6 +160,8 @@ name: mcape
 
 ---
 name: subdominio
+
+## Vertical structure 
 
 &lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-8-1.png" width="504" /&gt;
 
@@ -270,22 +277,24 @@ name: pp-hov
 
 ---
 
-Place holder for FSS
+### FSS
+
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-25-1.png" width="576" style="display: block; margin: auto;" /&gt;
 
 ---
 ## Comparison with RELAMPAGO sounding
 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-25-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-26-1.png" width="504" /&gt;
 
 ---
 name: sounding-00Z
 
 .pull-left[
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-26-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-27-1.png" width="504" /&gt;
 ]
 
 .pull-right[
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-27-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-28-1.png" width="504" /&gt;
 
 ]
 
@@ -293,11 +302,11 @@ name: sounding-00Z
 name: sounding-06Z
 
 .pull-left[
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-28-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-29-1.png" width="504" /&gt;
 ]
 
 .pull-right[
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-29-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-30-1.png" width="504" /&gt;
 ]
 
 ---
@@ -306,11 +315,27 @@ name: future
 
 # Future work
 
-- Assimilate:
-  - satellite radiance/brightness temperature observation from several instruments/satellites
+**Next steps**
+
+- Run a new experiment assimilating Satellite radiance/brightness temperature observations (I have to learn how to do it first!)
+- Run and analyze ensembles forecast inicialized from each experiment
+- Validation of forecasts using observations from the RELAMPAGO campaign
+
+--
+
+**Things for the future**
+
+- Evaluate the impact of the model resolution / Data assimilation with explicit convection
+- Study of increased predictability of deep convection from satellite data assimilation
+- Assimilate new observation from:
+  - GPS Radio occultation (RO) refractivity ?
   - Doppler radar radial velocities ?
-  - Radar reflectivity
-- Evaluate the impact of the model resolution
+  - Radar reflectivity ?
+
+???
+
+Estudio del incremento de la predictibilidad de la convección profunda en los casos seleccionados a partir de la inclusión de los datos de satélite. Se utilizará la técnica Ensemble Sensitivity to Observations (EFSO, Kalnay et al. 2012) para determinar el impacto relativo de los diferentes conjuntos de observaciones en la calidad de los análisis y pronósticos a corto plazo
+---
     </textarea>
 <style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
 <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
