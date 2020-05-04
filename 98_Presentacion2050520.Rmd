@@ -1,7 +1,7 @@
 ---
-title: "Using satellite data for evaluating and improving of high-resolution numerical forecasts of deep convective systems"
+title: "Using satellite data for evaluating and improving high-resolution numerical forecasts of deep convective systems"
 #subtitle: "⚔<br/>with xaringan"
-author: "Paola Corrales"
+author: "Paola Corrales <br/> Advisors: Victoria Galligani and Juan Ruiz"
 institute: "CIMA UBA-CONICET"
 date: "2020 05 05"
 output:
@@ -26,10 +26,7 @@ library(tidyverse)
 library(metR)
 library(data.table)
 library(lubridate)
-library(scattermore)
 source("help_functions.R")
-source("postprocesamiento.R")
-source("goes_functions.R")
 
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
 
@@ -43,7 +40,7 @@ name: goals
 
 # General Goals
 
-The main goal is to contribute to the development of a system of short-term forecasting of events associated with deep wet convection in southeastern South America. The following specific objectives are proposed:
+The main goal is to contribute to the development of a short-term forecasting system of events associated with deep wet convection in southeastern South America. The following specific objectives are proposed:
 
 --
 
@@ -53,6 +50,11 @@ The main goal is to contribute to the development of a system of short-term fore
 
 2. Improve the quality of initial conditions for explicit convection forecasts by assimilating conventional, satellite and radar data.
 
+???
+The main goal of my Ph.D. work is to contribute to the development of a forecasting system of events associated with deep wet convection in southeastern South America. 
+We proposed these specific goals but after that, we decided to switch between the LETFK system developed by Takemasa Miyoshi and the GSI system. To understand how GSI works and learn how to use it, I started doing tests assimilating conventional observations. 
+
+What I'm going to show you now are some results from 3 data assimilation experiments using different observations from conventional to satellite motion vectors. 
 ---
 name: case
 
@@ -73,6 +75,13 @@ of the RELAMPAGO field campaign]
 
 .right-column[![gif](fig/caso_20181122.gif)]
 
+???
+The experiments focus on a mesoscale convective system developed over central and north-eastern Argentina during November 22th, 2018. This MCS corresponds to IOP08 (Severe, Upscale Growth handoff) of the RELAMPAGO field campaign.
+
+And we want to focus on the RELAMPAGO period to take advantage of the observations taken. For now, I'm using some of the observations to validate the forecasts. 
+
+The gif shows the GOES-16 channel 13 (clean longwave-IR) during November, 22th
+
 ---
 name: model-conf
 
@@ -81,12 +90,12 @@ name: model-conf
 - **Resolution:** 10 km.
 - **Initial and boundary conditions:** GFS (deterministic 0.5º)
 - **Ensemble:** 60 members with multi-physics squeme and random perturbations. 
-  - 9 combinations of Cumulis and PBL **parameterizations:**
+  - 9 combinations of Cumulus and PBL **parameterizations:**
 
 | Cumulus | PBL |
 |---|---|
-| KB | YSU |
-| GB | MYJ |
+| KF | YSU |
+| GF | MYJ |
 | BMJ | MYNN2 |
 ]
 
@@ -115,6 +124,13 @@ ReadNetCDF("/home/paola.corrales/datosmunin/EXP/E4/ANA/20181120180000/analysis.e
 
 ]
 
+???
+As I said, I'm using the WRF model with 10 km horizontal resolution and the GFS deterministic run for the initial and boundary conditions. 
+
+For the assimilation, I used the LETKF versión of GSI and the 60 member ensemble is initialized using random perturbations and 9 combinations of 3 Cumulus (Kain–Fritsch, Grell–Freitas, Betts–Miller–Janjic) and 3 PBL (Yonsei University Scheme, Mellor–Yamada–Janjic Scheme, Mellor–Yamada Nakanishi Niino) parameterizations.
+
+On the right, the domain is shown. We tried to cover the center and north of Argentina and part of Bolivia and Paraguay to capture the development of the MCS.
+
 ---
 name: cycle
 background-image: url("fig/analysis_cycle.svg")
@@ -122,6 +138,13 @@ background-position: center
 background-size: cover
 
 # Assimilation Cycle
+
+???
+The figure shows the experiment time line and assimilation cycles. 
+
+The simulations starts at 12 UTC on Nov 20th with 6 hours of spin up. The assimilation start at 18 UTC and continue until 12 UTC Nov, 23th. Two deterministic forecasts are initialized from de the analysis mean at 00 and 06 UTC Nov 22th. 
+
+The analysis is perform in one-hour cetered window using the Observation Operator from GSI to compare the observation with the first guess at the closest time (FGAT: First Guess at Appropriate Time). Then the LETKF is run. 
 
 ---
 name: exp-config
@@ -212,18 +235,27 @@ unique(obsAUT, by = c("stationID")) %>%
 ```
 ]
 
+???
+The CONV experiment uses conventional observations from the prepBUFR file, this include, surface observations (land and sea) and profile from sounding and aircrafts. On the figure, the orange dots are the surface stations included in this experiment. 
+
+The AUT experiment add to CONV the regional automatic stations networks from Argentina and near countries. The added stations are colored in green. This stations have greater spatial coverage and higher sampling frequency.
+
+Finally, SATWND add to AUT the satellite motion vectors. 
+
 ---
 class: center, inverse, middle
 
 # Analysis comparison
 
+???
+So now, I would like to show you a few comparison between the analysis from the 3 experiments.
 ---
 name: rcrv-intro
 
 ## Reduced Centered Random Variable
 
 
-The *Reduced Centered Random Variable* is defined as:
+The *Reduced Centered Random Variable* (Candille et at. 2007) is defined as:
 
 $$ y = \frac{y^o - m}{\sqrt{\sigma_o^2 +\sigma^ 2}} $$
 The average of $y$ compute over all the realizations represent the weighted bias between the ensemble and observation $b = E[y]$.
@@ -231,6 +263,11 @@ The average of $y$ compute over all the realizations represent the weighted bias
 The standar deviation of $y$ is a measure of systematic over- or under- dispersion of the ensemble. It measure the agreement of the ensemble spread and the specific observational error with the observed amplitude of the forecast error $d = \sqrt{\frac{M}{M-1} E[(y-b)^2]}$
 
 A perfect system has no bias ( $b=0$ ) and dispersion equal to 1 ( $d=1$, con $d>1 \rightarrow underdispersive$ y $d<1 \rightarrow overdispersive$).
+
+???
+To test the reliability of the system I used the Reduced Centered Random Variable that compares the difference between each observation and the ensemble mean with the observation errors and the ensemble standard deviation. 
+
+The standard deviation of this variable measures the systematic over- or under- dispersion of the ensemble. If d > 1, the ensemble is underdispersive and It's over dispersive if d < 1. 
 
 ---
 name: rcrv-box-wind
@@ -285,6 +322,10 @@ obs.type[fread("uvt_rcrv_box.csv"), on = "type"] %>%
         panel.grid = element_line(linetype = 3)) 
 ```
 
+???
+So, here we have the standard deviation of the RCRV for the wind components, and each source of observations calculated over 2.5° boxes. 
+
+As you can see, the parameter is near 1 for the majority of the source of observations without distinction between u and v. The exception are the AIRCAR/AIRCFT observations with values greater than indicating that the attributed error for these kinds of observations is too large. 
 ---
 name: rcrv-box-temp
 
@@ -316,7 +357,8 @@ obs.type[fread("uvt_rcrv_box.csv"), on = "type"] %>%
         panel.grid = element_line(linetype = 3)) 
 ```
 
-
+???
+For the temperature, the results are similar. I also wondered what's happening on these dark squares. I found out that in each box there are stations with very bad observations. If I understand the output of the observation operator correctly, these observations were assimilated even with innovations around 15°!
 ---
 name: rcrv-profile
 
@@ -338,7 +380,12 @@ obs.type[fread("rcrv_uvt_perfil.csv"), on = "type"] %>%
        color = "Obs type") +
  theme_minimal(base_size = 16) 
 ```
+???
+And here we have the profiles of the mean and standard deviation of RCRV calculated for sounding and aircraft observations. 
 
+The highest deviations from 1 occur for AIRCAR (AIREP does not have many observations). The observations from soundings show values near 1 and the same happens for the AMDAS observations. 
+
+It's interesting to notice the positive bias in low levels for the temperature.
 
 ---
 name: mcape
@@ -407,6 +454,10 @@ cape[date %in% ymd_h(c("2018-11-22 00",
         panel.grid = element_line(linetype = 3))
 ```
 
+???
+So, now we can trust in the ensemble system. Here we can see the maximum CAPE for each experiment (in columns) and to instants in time (rows). I choose these hours to see "the state" of the analysis before initializing the deterministic forecasts. 
+There are important differences between CONV and the rest. The AUT and SATWND experiments are very similar, indicating that the wind observations from satellite motion vectors do not influence the CAPE.
+
 ---
 name: subdominio
 
@@ -441,7 +492,8 @@ square %>%
   theme_minimal(base_size = 16) + 
   theme(legend.position = "bottom")
 ```
-
+???
+To observe the impact of assimilating each source of observations on the vertical structure, I averaged the vertical profiles of T, q, and wind over the green domain.
 
 ---
 name: temp
@@ -518,6 +570,8 @@ perfiles  %>%
         panel.grid = element_line(linetype = 3))
 ```
 ]
+???
+So, here we have the difference between the experiments for the temperature over time. The major differences occur between AUT and CONV (notice the change in the scales) at low levels because the observations assimilated in upper levels are the same for both experiments. There is a systematic bias in low levels and I yet have to figure out what it's happening in upper levels at 18UTC on Nov 22th. 
 
 ---
 name: hum
@@ -535,7 +589,7 @@ perfiles %>%
   
   scale_y_level(name = "Pressure level", breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
   scale_x_datetime(expand = c(0,0), date_labels = "%HZ \n %b-%d", date_breaks = "12 hours") +
-  labs(title = "Humidity difference (g/Kg)",
+  labs(title = "Specific humidity difference (g/Kg)",
        subtitle = "AUT - CONV",
        y = "Pressure level",
        x = "Time") +
@@ -562,7 +616,7 @@ perfiles %>%
   
   scale_y_level(name = "Pressure level", breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
   scale_x_datetime(expand = c(0,0), date_labels = "%HZ \n %b-%d", date_breaks = "12 hours") +
-  labs(title = "Humidity difference (g/Kg)",
+  labs(title = "Specific humidity difference (g/Kg)",
        subtitle = "SATWND - AUT",
        y = "Pressure level",
        x = "Time") +
@@ -573,6 +627,8 @@ perfiles %>%
 
 ```
 ]
+???
+It similar for the specific humidity, the major difference it seen between AUT and CONV. In this case, we have a positive bias with a daily cycle.
 
 ---
 name: u-v
@@ -581,13 +637,13 @@ name: u-v
 ```{r}
 perfiles  %>% 
   ggplot(aes(date, lev)) +
-  geom_contour_fill(aes(z = U_E5_E4)) +
+  geom_contour_fill(aes(z = U_E5_E4), reaks = seq(-1, 1, 0.2)) +
   scale_fill_divergent(name = NULL,
-                       # breaks = seq(-1, 1, 0.2),
+                       breaks = seq(-1, 1, 0.2),
                        guide = guide_colorstrip(inside = TRUE,
                                                 barwidth = 25,
                                                 barheight = 0.8)) +
-  labs(title = "U",
+  labs(title = "U difference (m/s)",
        subtitle = "AUT - CONV",
        x = "Time",
        y = "Pressure level") +
@@ -605,13 +661,13 @@ perfiles  %>%
 ```{r}
 perfiles  %>% 
   ggplot(aes(date, lev)) +
-  geom_contour_fill(aes(z = U_E6_E5)) +
+  geom_contour_fill(aes(z = U_E6_E5), breaks = seq(-0.5, 0.5, 0.1)) +
   scale_fill_divergent(name = NULL,
-                       # breaks = seq(-0.2, 0.2, 0.05),
+                       breaks = seq(-0.5, 0.5, 0.1),
                        guide = guide_colorstrip(inside = TRUE,
                                                 barwidth = 25,
                                                 barheight = 0.8)) +
-  labs(title = "U",
+  labs(title = "U difference (m/s)",
        subtitle = "SATWND - AUT",
        x = "Time",
        y = "Pressure level") +
@@ -622,8 +678,9 @@ perfiles  %>%
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3))
 ```
-
 ]
+???
+For the zonal wind we can see a big impact in low levels if we compere AUT with CONV. What it's interesting is the impact in upper level when we compare SATWND with AUT. In this case the impact is important in upper levels between 500 and 200 hPa. 
 
 ---
 name: v
@@ -632,13 +689,13 @@ name: v
 ```{r}
 perfiles  %>% 
   ggplot(aes(date, lev)) +
-  geom_contour_fill(aes(z = V_E5_E4)) +
+  geom_contour_fill(aes(z = V_E5_E4), breaks = seq(-1, 1, 0.2)) +
   scale_fill_divergent(name = NULL,
-                       # breaks = seq(-1, 1, 0.2),
+                       breaks = seq(-1, 1, 0.2),
                        guide = guide_colorstrip(inside = TRUE,
                                                 barwidth = 25,
                                                 barheight = 0.8)) +
-  labs(title = "V",
+  labs(title = "V difference (m/s)",
        subtitle = "AUT - CONV",
        x = "Time",
        y = "Pressure level") +
@@ -656,13 +713,13 @@ perfiles  %>%
 ```{r}
 perfiles  %>% 
   ggplot(aes(date, lev)) +
-  geom_contour_fill(aes(z = V_E6_E5)) +
+  geom_contour_fill(aes(z = V_E6_E5), breaks = seq(-0.5, 0.5, 0.1)) +
   scale_fill_divergent(name = NULL,
-                       # breaks = seq(-0.2, 0.2, 0.05),
+                       breaks = seq(-0.5, 0.5, 0.1),
                        guide = guide_colorstrip(inside = TRUE,
                                                 barwidth = 25,
                                                 barheight = 0.8)) +
-  labs(title = "V",
+  labs(title = "V difference (m/s)",
        subtitle = "SATWND - AUT",
        x = "Time",
        y = "Pressure level") +
@@ -673,24 +730,27 @@ perfiles  %>%
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3))
 ```
-
 ]
 
+???
+In these figures, we can si a difference between AUT and CONV with a daily cycle in low levels and an important difference in upper levels around 18UTC (as we sew on the temperature profiles). We also have differences between SATWND and AUT en upper levels.
 
 ---
 name: spd
+exclude: true
+
 .pull-left[ 
 
 ```{r}
 perfiles  %>% 
   ggplot(aes(date, lev)) +
-  geom_contour_fill(aes(z = SPD_E5_E4)) +
+  geom_contour_fill(aes(z = SPD_E5_E4), breaks = seq(-1.5, 1, 0.5)) +
   scale_fill_divergent(name = NULL,
-                       # breaks = seq(-1, 1, 0.2),
+                       breaks = seq(-1.5, 1, 0.5),
                        guide = guide_colorstrip(inside = TRUE,
                                                 barwidth = 25,
                                                 barheight = 0.8)) +
-  labs(title = "SPD",
+  labs(title = "SPD difference (m/s)",
        subtitle = "AUT - CONV",
        x = "Time",
        y = "Pressure level") +
@@ -708,13 +768,13 @@ perfiles  %>%
 ```{r}
 perfiles  %>% 
   ggplot(aes(date, lev)) +
-  geom_contour_fill(aes(z = SPD_E6_E5)) +
+  geom_contour_fill(aes(z = SPD_E6_E5), breaks = seq(-0.5, 0.5, 0.1)) +
   scale_fill_divergent(name = NULL,
-                       # breaks = seq(-0.2, 0.2, 0.05),
+                       breaks = seq(-0.5, 0.5, 0.1),
                        guide = guide_colorstrip(inside = TRUE,
                                                 barwidth = 25,
                                                 barheight = 0.8)) +
-  labs(title = "SPD",
+  labs(title = "SPD difference (m/s)",
        subtitle = "SATWND - AUT",
        x = "Time",
        y = "Pressure level") +
@@ -725,9 +785,9 @@ perfiles  %>%
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3))
 ```
-
 ]
-
+???
+And here we have the magnitude of the wind. 
 ---
 name: hum-field
 
@@ -775,6 +835,9 @@ q[bottom_top <= 7, .(q = mean(q), u = u[bottom_top == 1], v = v[bottom_top == 1]
         panel.grid = element_line(linetype = 3))
 ```
 
+???
+Next, I wanted to show you some humidity and wind fields at low levels at the same time we saw the maximum CAPE. At first sight, the difference between CONV and the other experiments is important. But we can't see much here. 
+
 ---
 name: hum-diff
 
@@ -814,14 +877,19 @@ diff_q_spd %>%
         panel.grid = element_line(linetype = 3),
         strip.background = element_blank())
 ```
+???
+So here is the difference between the experiments. Because we put the focus at low levels, we don't see major differences between SATWND and AUT compere with AUT-CONV. On the right, we can see that the new observations from the automatical stations generates a much more humid environment in almost all the domain and this difference is maintained during the development of convection. But it has an inverse impact on the wind. The AUT analysis shows weaker northerly wind. 
 
+It's also shown that the position of the cold front is affected by the analysis of the different observations.
 
 ---
 class: inverse, center, middle
 name: fcst
 
-# Forecast comparison
+# Forecasts comparison
 
+???
+Going foward to the forecasts. We inicialized deterministic forecats from each experiment at 00 and 06UTC Nov, 22th. 
 ---
 name: pp-acum
 
@@ -943,6 +1011,13 @@ pp_inter %>%
         panel.grid = element_line(linetype = 3))
 ```
 ]
+???
+In the first place, I compared the forecasts with the IMERG data product, in this case the accumulated precipitation from 06UTC Nov 22thto 12UTC Nov 23th. Each column corresponds to an experiment from the forecasts where initialized (rows).
+
+CONV generates higher accumulated precipitation with maximums over northern Argentina, in accordance with observations. However, it cannot predict the precipitation that is generated between 27 and 35 degrees south. 
+In the forecasts initialized from AUT and SATWND, there are smaller accumulations but they are capable of producing precipitation south of 27 degrees. 
+
+The forecasts initialized at 06UTC capture precipitation and maximums much better.
 
 ---
 name: pp-hov
@@ -979,11 +1054,11 @@ pp_hov_acum[coord[south_north == 120, .(west_east, lon)], on = c("west_east")] %
   .[, fcst := factor(fcst)] %>% 
   # .[fcst == unique(fcst)[2] | fcst == unique(fcst)[4]] %>% 
   ggplot(aes(lon, date)) +
-  geom_contour_fill(aes(z = round(pp, 6)), breaks = seq(0, 15, 1), na.fill = 0) +
+  geom_contour_fill(aes(z = round(pp, 6)), breaks = seq(0, 18, 1), na.fill = 0) +
   scale_fill_gradient("FCST", low  = "white", high = "black",
                        # limits = c(0, 350),
                        oob = scales::squish,
-                       breaks = seq(0, 15, 3),
+                       breaks = seq(0, 18, 3),
                        guide = guide_colorstrip(barwidth = 20,
                                                 barheight = 0.7)) +
   geom_contour(data = pp_imerg_hr, aes(z = pp, color = ..level..), 
@@ -1010,12 +1085,14 @@ pp_hov_acum[coord[south_north == 120, .(west_east, lon)], on = c("west_east")] %
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3))
 ```
+???
+This figure shows the evolution of precipitation over latitudes 30º to 34ºS. Nither forecast is capable of producing precipitation between 65 and 70° west and overestimate the precipitation at the end of the period. But both forecasts from AUT and SATWND have important similarities with the IMERG observations. 
 
 ---
 
 ### FSS
 
-```{r fig.align="center", fig.width=8, fig.height=7}
+```{r fig.align="center", fig.width=10, fig.height=8}
 fread("fss_3hr.csv") %>% 
   .[, date := as_datetime(date)] %>% 
   # .[w == 4] %>% 
@@ -1028,9 +1105,13 @@ fread("fss_3hr.csv") %>%
   scale_x_datetime(date_labels = "%HZ", date_breaks = "6 hours", expand = c(0, 0)) +
   facet_grid(q ~ w, labeller = labeller(w = c("4" = "~90 km", "40" = "~800 km"), 
                                         q = c("1" = "1 mm", "25" = "25 mm"))) +
+  labs(caption = "Precipitation accumulated over 3 hours") +
   theme_minimal(base_size = 16)
 ```
+???
+To make a more quantitative comparison, I calculated the Fraction Skill Score for two precipitation thresholds, 1 and 25 mm (rows) and two scales, 90 and 800 km (columns). In general AUT and SATWND are better than CONV for every combination of threshold and scale. There are some differences between AUT and SATWND, the later one has an FSS grater in different moments.
 
+The 06UTC initialization is, also in general, better than the previous initialization. And with this initialization, we can see greater differences between AUT and SATWND.
 ---
 ## Comparison with RELAMPAGO sounding
 
@@ -1091,9 +1172,11 @@ square %>%
   theme_minimal(base_size = 16) + 
   theme(legend.position = "bottom")
 ```
-
+???
+Finally, I compare the forecast with the soundings launched during the RELAMPAGO mission. (69 soundings!!)
 ---
 name: sounding-00Z
+exclude: true
 
 .pull-left[
 ```{r}
@@ -1135,7 +1218,6 @@ sondeos[variable != "rh" & !is.na(regular_fcst) & regular_p %between% c(800, 100
        x = "") +
   theme_minimal(base_size = 16)
 ```
-
 ]
 
 ---
@@ -1215,6 +1297,10 @@ sondeos[variable != "rh" & !is.na(regular_fcst) & regular_p %between% c(800, 100
   theme_minimal(base_size = 16)
 ```
 ]
+???
+This is a very initial analysis, I calculate the Root Mean Squere Error (RMSE) and the bias betwenn the soundings and each forecast for t, humidity and wind. 
+
+In general the RMSE and Bias are not so different between forecasts, but at some levels AUT and SATWND separete with CONV. There are exeptions but AUT and SATWND has less bias and RMSE. 
 
 ---
 class: inverse
@@ -1226,7 +1312,7 @@ name: future
 
 - Run a new experiment assimilating Satellite radiance/brightness temperature observations (I have to learn how to do it first!)
 - Run and analyze ensembles forecast inicialized from each experiment
-- Validation of forecasts using observations from the RELAMPAGO campaign
+- Validation of analysis and forecasts using observations from the RELAMPAGO campaign
 
 --
 
@@ -1240,6 +1326,14 @@ name: future
   - Radar reflectivity ?
 
 ???
+- Run a new experiment assimilating Satellite radiance/brightness temperature observations (I have to learn how to do it first!)
+- Run and analyze ensembles forecast inicialized from each experiment
+- Validation of forecasts and analysis using observations from the RELAMPAGO campaign
 
-Estudio del incremento de la predictibilidad de la convección profunda en los casos seleccionados a partir de la inclusión de los datos de satélite. Se utilizará la técnica Ensemble Sensitivity to Observations (EFSO, Kalnay et al. 2012) para determinar el impacto relativo de los diferentes conjuntos de observaciones en la calidad de los análisis y pronósticos a corto plazo
----
+- Evaluate the impact of the model resolution / Data assimilation with explicit convection
+- Study of increased predictability of deep convection from satellite data assimilation
+- Assimilate new observation from:
+  - GPS Radio occultation (RO) refractivity ?
+  - Doppler radar radial velocities ?
+  - Radar reflectivity ?
+
