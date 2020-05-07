@@ -1,0 +1,406 @@
+---
+title: "102_satwind"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(data.table)
+library(metR)
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
+```
+
+## bufr
+
+El viento derivado de satélites se codifica como tipo 240 - 260 dependiendo del instrumento. Sin embargo ni GFS ni el resto de los sistemas operativos usan las observaciones presentes en el prepbufr y en cambio leen el bufr específico **gdas.tHHz.satwnd.tm00.bufr_D**.
+
+En la [Tabla 18](https://www.emc.ncep.noaa.gov/mmb/data_processing/prepbufr.doc/table_18.htm) se detalla el uso de las distintas observaciones según el instrumento. 
+
+### Satwnd Header Definitions:
+
+- DATACAT = BUFR Data Category
+- SAID = Satellite Identifier
+- OCID = Identification of originating/generating center (GCLONG in BUFR)
+- CLAS = Satellite Classification (SCLF in BUFR)
+- RPID = Report Identifier
+- SIDP = Satellite Used in Instrument Processing
+- SWCM = Satellite Derived Wind Computation Method
+- YEAR = YEAR
+- MNTH = MONTH
+- DAY = DAY
+- HOUR = HOUR
+- MIN = MIN
+- LAT = Latitude (Deg)
+- LON = Longitude (Deg)
+- PRSL = Pressure (Pa) 
+- TMP = Temperature/Dry Bulb Temperature (K)
+- WDIR = Wind Direction (Degree True)
+- WSPD = Wind Speed (m/s)
+
+Mejor y con más detalle [Tabla b](https://www.nco.ncep.noaa.gov/sib/jeff/bufrtab_tableb.html)
+
+
+### GSI
+ 
+**read_obs.f90**
+
+- Reconoce el bufr de este tipo de observaciones si el archivo se llama **satwndbufr** y llama a la rutina **read_satwnd**
+
+**read_satwnd.f90**
+
+For the satellite ID type: 
+
+- 240: GOES short wave winds, 
+- 241: India, 
+- 242: JMA Visible,
+- 243: EUMETSAT visible,
+- 244: AVHRR winds
+- 245: GOES IR. 
+- 246: GOES WV cloud top, 
+- 247: GOES WV deep layer
+- 250: JMA WV deep layer. 
+- 251: GOES visible, 
+- 252: JMA IR winds
+- 253: EUMETSAT IR winds, 
+- 254: EUMETSAT WV deep layer winds
+- 257,258,259: MODIS IR,WV cloud top, WV deep layer winds
+- 260: VIIR IR winds
+
+For satellite subtype: 
+
+- 50-80 from EUMETSAT geostationary satellites(METEOSAT) 
+- 100-199 from JMA geostationary satellites(MTSAT)
+- 250-299 from NESDIS geostationary satellites(GOES)
+- 700-799 from NASA Terra and Aqua satellites
+- <10, 200-223 from NOAA-15, 16, 17, 18, polar orbit and EUMESAT MetOp satellites 
+
+The quality mark:the values range from 0 to 15.
+
+- 0-7 used: 0 is best, when the value greater than 3, the observation error needed to be enflated. 
+- 8-15 monitored
+
+Notas:
+
+- Rechaza observaciones por encima de 125mb.
+- Rechaza observaciones con quality marker 12 o 14.
+- Algunas restricciones extras dependiendo del tipo de observación, por ejemplo:
+  - Velocidad mínima de 10m/s para CAWV (type = 247), qm = 15
+  - qm=15 !reject data with low QI
+  
+#### diagfile
+
+- cdata_all(1,iout)=woe                  ! wind error
+- cdata_all(2,iout)=dlon                 ! grid relative longitude
+- cdata_all(3,iout)=dlat                 ! grid relative latitude
+- cdata_all(4,iout)=dlnpob               ! ln(pressure in cb)
+- cdata_all(5,iout)=ee                   !  quality information 
+- cdata_all(6,iout)=uob                  ! u obs
+- cdata_all(7,iout)=vob                  ! v obs 
+- cdata_all(8,iout)=rstation_id          ! station id 
+- cdata_all(9,iout)=t4dv                 ! time
+- cdata_all(10,iout)=nc                  ! index of type in convinfo file
+- cdata_all(11,iout)=qifn +1000.0_r_kind*qify   ! quality mark infor  
+- cdata_all(12,iout)=qm                  ! quality mark
+- cdata_all(13,iout)=obserr              ! original obs error
+- cdata_all(14,iout)=usage               ! usage parameter
+- cdata_all(15,iout)=idomsfc             ! dominate surface type
+- cdata_all(16,iout)=tsavg               ! skin temperature
+- cdata_all(17,iout)=ff10                ! 10 meter wind factor
+- cdata_all(18,iout)=sfcr                ! surface roughness
+- cdata_all(19,iout)=dlon_earth_deg      ! earth relative longitude (degrees)
+- cdata_all(20,iout)=dlat_earth_deg      ! earth relative latitude (degrees)
+- cdata_all(21,iout)=zz                  ! terrain height at ob location
+- cdata_all(22,iout)=r_prvstg(1,1)       ! provider name
+- cdata_all(23,iout)=r_sprvstg(1,1)      ! subprovider name
+- cdata_all(25,iout)=var_jb              ! non linear qc parameter
+
+### Comparación analisis con y sin satwnd
+
+Prueba de asimilación usando 3DVar para hacer un par de experimentos rápidos. 
+
+Fecha: 2018112100
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+with_satwnd <- ReadNetCDF("u_satwind.nc", vars = c(u = "uvmet")) %>% 
+  .[, v := ReadNetCDF("v_satwind.nc", vars = c(v = "uvmet"), out = "vector")] %>% 
+  .[, t := ReadNetCDF("t_satwind.nc",  vars = c(t = "temp"), out = "vector")] %>% 
+  .[, exp := "with_satwnd"]
+
+no_satwnd <- ReadNetCDF("u_no_satwind.nc", vars = c(u = "uvmet")) %>% 
+  .[, v := ReadNetCDF("v_no_satwind.nc", vars = c(v = "uvmet"), out = "vector")] %>% 
+  .[, t := ReadNetCDF("t_no_satwind.nc",  vars = c(t = "temp"), out = "vector")] %>% 
+  .[, exp := "no_satwnd"]
+
+exp <- rbind(with_satwnd, no_satwnd)
+
+diff <- with_satwnd[no_satwnd, on = c("bottom_top", "south_north", "west_east")] %>% 
+  .[, ":="(u.diff = u - i.u,
+           v.diff = v - i.v,
+           t.diff = t - i.t)]
+```
+
+
+```{r}
+exp[bottom_top %in% seq(1, 60, 10)] %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_point(aes(color = u)) +
+  scale_color_divergent() +
+  facet_grid(exp~bottom_top)
+
+diff[bottom_top %in% seq(20, 58, 2)] %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_point(aes(color = u.diff)) +
+  scale_color_divergent() +
+  facet_wrap(~bottom_top)
+```
+
+### Diagfiles
+
+```{r}
+diag <- fread("/home/paola.corrales/comGSIv3.7_EnKFv1.3/examples/test/gsi_satwnd/results_conv_ges.2018112100") %>% 
+  .[, c("V2", "V4") := NULL]
+
+colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr")
+
+diag <- diag[type %between% c(240, 260)] %>% 
+.[, sat_type := case_when(
+  type == 240 ~ "GOES SW winds",
+  type == 241 ~ "India",
+  type == 242 ~ "JMA Visible",
+  type == 243 ~ "EUMETSAT visible",
+  type == 244 ~ "AVHRR winds",
+  type == 245 ~ "GOES IR", 
+  type == 246 ~ "GOES WV cloud top", 
+  type == 247 ~ "GOES WV deep layer",
+  type == 248 ~ "GOES cloud top (sounder)",
+  type == 249 ~ "GOES deep layer (sounder)",
+  type == 250 ~ "JMA WV deep layer", 
+  type == 251 ~ "GOES visible", 
+  type == 252 ~ "JMA IR winds",
+  type == 253 ~ "EUMETSAT IR winds", 
+  type == 254 ~ "EUMETSAT WV deep layer winds",
+  type == 257 ~ "MODIS IR",
+  type == 258 ~ "MODIS WV cloud top",
+  type == 259 ~ "MODIS WV deep layer winds",
+  type == 260 ~ "VIIR IR winds")] %>% 
+  melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
+                       .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
+                       .[, variable := str_remove(variable, "2")] %>% 
+  pivot_wider(names_from = variable, values_from = value) %>% 
+                       setDT
+
+diag[var == "u"] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = sat_type)) +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  facet_wrap(~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
+                                                             "1" = "asimilated"))) +
+  labs(color = "Source",
+       x = "lon") +
+  theme_minimal()
+
+```
+Comparando la distribución espacial de las observaciones rechazadas y asimiladas, no se ve gran diferencia. Lo único más notable es que todas las observaciones de EUMESAT son rechazadas, no queda claro si esto se debe a una casualidad (justo en este tipo estas observaciones eran de baja calidad o estaban muy lejos del guess) o si es algo definido en el código de GSI. 
+
+Revisando el código (`read_satwnd.f90`) parece que los "WV deep layer" se usan para monitoreo. También dice: "reject data zenith angle >68.0 degree", habría que ver el ángulo zenital de estas observaciones. A simple vista hay muchas observaciones con un ángulo zenital menor a 68 grados así que esta no sería la causa para recharzar todas las observaciones. 
+
+Es notorio que el error de las observaciones rechazadas en la mayoría de los casos es `Inf`. 
+
+```{r}
+N_obs <- diag[var == "u", .N, by = .(usage.flag, var)] %>% 
+  .[, label := paste("N = ", N)] %>% 
+  .[, ":="(lon = 302.0,
+          pressure = 920)]
+
+diag[var == "u"] %>% 
+  ggplot(aes(ConvertLongitude(lon), pressure)) +
+  geom_point(aes(color = sat_type)) +
+  scale_y_level(name = "pressure level", breaks = c(1000, 900, 700, 500, 400, 300, 200, 100)) +
+  scale_x_longitude(breaks = seq(-75, -55, 5)) +
+  geom_label(data = N_obs, aes(x = ConvertLongitude(lon), y = pressure, label = label))  +
+  facet_grid(var~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
+                                                             "1" = "asimilated"))) +
+  labs(color = "Source",
+       x = "lon",
+       y = "pressure level") +
+  theme_minimal()
+```
+
+```{r}
+diag %>% 
+  ggplot((aes(ConvertLongitude(lon), lat))) +
+  geom_point(aes(color = obs)) +
+  scale_color_divergent() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  facet_grid(var~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
+                                                             "1" = "asimilated"))) +
+  theme_minimal()
+
+
+diag[var == "u"] %>% 
+  ggplot(aes(ConvertLongitude(lon), pressure)) +
+  geom_point(aes(color = obs.guess)) +
+  scale_color_divergent() +
+  scale_y_level(name = "pressure level", breaks = c(1000, 900, 700, 500, 400, 300, 200, 100)) +
+  scale_x_longitude(breaks = seq(-75, -55, 5)) +
+  geom_label(data = N_obs, aes(x = ConvertLongitude(lon), y = pressure, label = label))  +
+  facet_grid(var~usage.flag, labeller = labeller(usage.flag = c("-1" = "rejected",
+                                                             "1" = "asimilated"))) +
+  labs(color = "Source",
+       x = "lon",
+       y = "pressure level") +
+  theme_minimal()
+```
+
+## Experimento de asimilación.
+
+10 miembros y 24 ciclos de asimilación arrancando a las 18 UTC del 20181120
+
+```{r}
+files <- Sys.glob("analisis/diagfiles/E1/asim_conv*")
+
+obs <- purrr::map(files, function(f) { 
+  diag <- fread(f) %>% 
+    .[, exp := basename(dirname(f))] %>% 
+    .[, date := ymd_hms(stringr::str_extract(f, "\\d{14}"))] %>% 
+    .[]
+  }) %>% 
+  rbindlist() %>% 
+  .[, c("V2", "V4") := NULL]
+
+colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "date")
+
+obs[, .N, by = .(exp, var, usage.flag)] %>% 
+  dcast(exp + usage.flag ~ var, value.var = "N") %>% 
+  knitr::kable()
+```
+
+```{r}
+obs[, .N, by = .(var, date, exp, usage.flag)] %>% 
+  ggplot(aes(date, N)) +
+  geom_line(aes(color = var, linetype = factor(usage.flag))) +
+  scale_linetype_manual(values = c("-1" = 2, "1" = 1)) +
+  labs(title = "Cantidad de observaciones asimiladas y rechazadas según variable",
+       linetype = "Uso", 
+       color = "experimento") +
+  theme_minimal()
+```
+
+Por defecto las observaciones tipo 251 = GOES Visible no se asimilan porque no tienen error definido. Algunas otras observaciones tienen defidino un error para algunos niveles y otros no. Esto permite controlar a que niveles se asimilacada observación, lo complicado sería redefinir estos errores para asimilar más o menos oservaciones sin conocer mejor el tipo de observación. 
+
+Respecto a la tabla *convinfo*, algunos tipos de observación tienen subtipos (algunos se asimilan, otros no) y no logro encontrar que significan canda uno. El gross check para estas observaciones es muy estricto con un umbral de entre 1.3 y 2.5 m/s (para comparar el umbral de las observaciones de estaciones de superficie es 6 m/s).
+
+```{r}
+obs[var == "uv", .N, by = .(var, type, usage.flag)] %>% 
+  dcast(usage.flag ~type, value.bar = "N") %>% 
+   knitr::kable()
+
+obs <- obs[type %between% c(240, 260)] %>% 
+.[, sat_type := case_when(
+  type == 240 ~ "GOES SW winds",
+  type == 241 ~ "India",
+  type == 242 ~ "JMA Visible",
+  type == 243 ~ "EUMETSAT visible",
+  type == 244 ~ "AVHRR winds",
+  type == 245 ~ "GOES IR", 
+  type == 246 ~ "GOES WV cloud top", 
+  type == 247 ~ "GOES WV deep layer",
+  type == 248 ~ "GOES cloud top (sounder)",
+  type == 249 ~ "GOES deep layer (sounder)",
+  type == 250 ~ "JMA WV deep layer", 
+  type == 251 ~ "GOES visible", 
+  type == 252 ~ "JMA IR winds",
+  type == 253 ~ "EUMETSAT IR winds", 
+  type == 254 ~ "EUMETSAT WV deep layer winds",
+  type == 257 ~ "MODIS IR",
+  type == 258 ~ "MODIS WV cloud top",
+  type == 259 ~ "MODIS WV deep layer winds",
+  type == 260 ~ "VIIR IR winds")]
+
+obs[type %between% c(240, 260), .N, by = .(var,type, sat_type, date, exp, usage.flag)] %>% 
+  ggplot(aes(date, N)) +
+  geom_line(aes(color = factor(type))) +
+  geom_point(aes(color = factor(type))) +
+  facet_wrap(usage.flag ~ exp) +
+  labs(title = "Observaciones de viento",
+       linetype = "Uso", 
+       color = "type") +
+  theme_minimal()
+
+obs[type %between% c(240, 260) & is.finite(rerr)] %>% 
+  ggplot(aes(obs.guess)) +
+  geom_density() +
+  facet_grid(usage.flag ~ type)
+```
+
+Intentando idenficar la causa de rechazo de las observaciones veo que:
+
+- En muchísimos casos el error de la observación está definido con `Inf`
+- En algunos casos el error es grande pero no muchos.
+- La distancia entre la observación y el guess es grande
+- En algunos casos la observación es muy distinta a las observaciones vecinas
+
+```{r}
+obs[, inf := !is.finite(rerr)] %>% 
+  .[, .N, by = .(type, usage.flag, inf)] %>% 
+  dcast(usage.flag + inf ~ type) %>% 
+  knitr::kable()
+```
+
+
+## RCRV
+
+```{r message=FALSE, warning=FALSE}
+source("help_functions.R")
+path <- "analisis/diagfiles/E1/asim_conv_2018112*"
+
+perfiles <- read_diag(path, variable = c("uv")) %>%
+  .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]
+
+RCRV <- get_RCRV(perfiles[type %between% c(240, 260)], tipo = c("perfil")) %>% 
+  .[, sat_type := case_when(
+  type == 240 ~ "GOES SW winds",
+  type == 241 ~ "India",
+  type == 242 ~ "JMA Visible",
+  type == 243 ~ "EUMETSAT visible",
+  type == 244 ~ "AVHRR winds",
+  type == 245 ~ "GOES IR", 
+  type == 246 ~ "GOES WV cloud top", 
+  type == 247 ~ "GOES WV deep layer",
+  type == 248 ~ "GOES cloud top (sounder)",
+  type == 249 ~ "GOES deep layer (sounder)",
+  type == 250 ~ "JMA WV deep layer", 
+  type == 251 ~ "GOES visible", 
+  type == 252 ~ "JMA IR winds",
+  type == 253 ~ "EUMETSAT IR winds", 
+  type == 254 ~ "EUMETSAT WV deep layer winds",
+  type == 257 ~ "MODIS IR",
+  type == 258 ~ "MODIS WV cloud top",
+  type == 259 ~ "MODIS WV deep layer winds",
+  type == 260 ~ "VIIR IR winds")]
+
+RCRV %>% 
+  melt(measure.vars = c("mean.y", "sd.y")) %>% 
+  ggplot(aes(nivel.error, value)) +
+  geom_hline(yintercept = c(0, 1), color = "darkgrey") +
+  geom_line(aes(color = factor(sat_type), linetype = variable)) +
+  scale_color_brewer(palette = "Set1") +
+  scale_x_level() +
+  coord_flip() +
+  facet_wrap(~ var, scales = "free_x") +
+  labs(title = "Reduced Centered Random Variable",
+       subtitle = "Satellite wind",
+       linetype = "",
+       color = "Obs type") +
+  theme_minimal()
+```
+

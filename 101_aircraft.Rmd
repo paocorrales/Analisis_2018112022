@@ -1,0 +1,107 @@
+---
+title: "101_aircraft"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Observaciones de aviones en los prepbufrs
+
+Los prepbufrs contienen 3 tipos de observaciones provenientes de aviones:
+
+- 130/230: AIREP
+- 131/231: AMDAR
+- 133/233: MDCRS ACARS
+
+Por ahora según la configuración de la **errtable** algunas observaciones de humedad no se asimilan (también está así en el archivo **convinfo**). 
+
+| tipo | temp | q | uv |
+|:--:|:---:|:---:|:---:|
+|130| 2.5 | NA | - |
+|131| 1.47 | NA | - |
+|133 |1.47 |1.94 | - |
+|230| - | - | 3.6 |
+|231 | - | - | 3.0 |
+|233 | -  | - | 2.5 |
+
+También parece haber otros [tipos de reportes](https://www.emc.ncep.noaa.gov/mmb/data_processing/prepbufr.doc/table_21.htm) que incorporan las observaciones de masa y viento en un solo perfil, pero hasta ahora no me encontré con ninguno de esos en los prepbufr. 
+
+### Quality markers
+
+Al parecer hay un tipo de avión que siempre es rechazado en el análisis. Esto podría deberse a que tiene un QM específico en el prepbufr que previene la asimilación. 
+
+[Tabla de QM general](https://www.emc.ncep.noaa.gov/mmb/data_processing/prepbufr.doc/table_7.htm)
+
+```{r message=FALSE, warning=FALSE}
+library(data.table)
+library(tidyverse)
+library(metR)
+
+prepbufr <- fread("data/qm.csv", na.strings = "100000000000.000")
+
+colnames(prepbufr) <- c("source", "ana.date", "stationID", "lon", "lat", "dhr", "type", "elev", "pob", "qob", "tob", "zob", "uob", "vob", "pwo", "cat", "prss", "pqm", "qqm", "tqm", "zqm", "wqm", "nul", "pwq")
+
+prepbufr <- prepbufr[type %in% c(130, 131, 133, 230, 231, 233) & 
+           lat %between% c(-50, -15) &
+           lon %between% c(280, 320)] 
+```
+
+Ubicación de las observaciones de aviones para el 22/11/2018 a las 00Z (más, menos 1 hora). Se superponen las observaciones de q y t con las de viento.
+
+```{r}
+map <- sf::read_sf("mapa/mapa.shp")
+
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
+
+prepbufr %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_mapa() +
+  geom_point(aes(color = factor(type))) +
+  coord_sf(xlim = c(-80, -40), ylim = c(-50, -15)) +
+  labs(x = "lon", color = "Obs type") +
+  theme_minimal()
+```
+
+El quality marker para este tipo de observaciones (y al menos en este prepbufr) toma valores 1, 13 y 14. De acuerdo a la tabla 7 esto significa:
+
+- 1: All steps: Good.  Applies to pressure, height, wind, temperature, specific humidity, rainfall rate, precipitable water and cloud top pressure.
+- 13: 
+  * All automated quality control steps: A non-wind profiler observation failed one or more checks.  Applies to pressure, height, wind, temperature, specific humidity and precipitable water.
+  * Step CQCPROF: A wind profiler report in Table A entry PROFLR failed one or more checks.  Applies to wind.
+  * Data producer: A wind profiler report in Table A entry PROFLR fails median check performed by NOAA/ERSL/GSD, but passes shear check.  Applies to wind.
+  
+- 14: NCEP/SDM: An observation is assigned a purge flag.  Applies to pressure, height, wind, temperature and specific humidity. (SDM = NCO Senior Duty Meteorologists).
+
+```{r}
+prepbufr %>% 
+  melt(measure.vars = c("qqm", "tqm", "wqm")) %>% 
+  ggplot(aes(factor(type), value)) +
+  geom_jitter(aes(color = factor(value))) 
+  facet_wrap(~type)
+```
+
+Intentando encontrar que hacen las pobres observaciones para que se ganen el 14:
+
+De este link: https://rda.ucar.edu/docs/formats/nmc/on29.txt
+
+TABLE Q.6
+P    | Monitor purge (see Note 1).                      |   14
+Note 1 - For AIREP, PIREP, and ASDAR aircraft data after 1200 UTC 5
+            August 1992: The character "P" in the first quality indicator
+            position followed by a blank in the second quality indicator 
+            position indicates the entire report has been manually 
+            purged by the NMC/SDM.  Character "P" in the first and
+            second quality indicator positions indicates the entire
+            report has been automatically purged by pgm "QCAIRCFT".  
+
+De este otro link:
+
+http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.55.1070&rep=rep1&type=pdf
+
+Manual (monitore) purge. Never use this data no matter what. The QAM (human quality control) has manually set this switchto force this datum to NOT be used by the analysis.
+
+

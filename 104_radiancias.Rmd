@@ -1,0 +1,256 @@
+---
+title: "104_radiancias"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(metR)
+library(data.table)
+library(lubridate)
+library(scattermore)
+source("help_functions.R")
+source("postprocesamiento.R")
+source("goes_functions.R")
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
+```
+
+## GOES 16
+
+Canales en la región del infrarrojo
+
+| Canal | Longitud de onda Central $\mu m$ | Observaciones | Función de peso |
+|:-----:|:----------:|:------------------------------------|:----------------------------|
+|  7  |  3.9  | Sensible tanto a la radiación del sol como a la emitida por la Tierra | Maxímo en superficie |
+|  8  |  6.2  | Sensible al vapor de agua | Máximo en 425 hPa. |
+|  9  |  6.9  | Predomina la absorción por vapor de agua | Maxímo cercano a 460 hPa. |
+| 10  |  7.3  | Sensible al vapor de agua | Máximo en 640 hPa. |
+| 11  |  8.4  | Para estudio de microfísica de nubes y plumas volcánicas con ceniza y dióxido de sulfuro | Máximo en niveles bajos |
+| 12  |  9.6  | Absorción por ozono  | Máximo en la estratósfera |
+| 13  | 10.3  | Ventana radiativa, absorción despresiable en la atmósfera. Cerca del $\lambda$ de máxima emisión terrestre | Máximo en superficie |
+| 14  | 11.2  | Ventana radiativa con mayor absorción de vapor de agua | |
+| 15  | 12.3  | Ventana radiativa con mayor absorción de vapor de agua | |
+| 16  | 13.3  | Absorción por dióxido de carbono | Máximo cerca de superficie |
+
+
+Al parecer las observaciones de GOES vienen en archivos .nc, uno por canal en radiancias. 
+
+
+```{r echo=FALSE, fig.height=4, dpi=150}
+files <- list.files(path = "/home/paola.corrales/datosmunin/DA/DA_DATA/GOES16/", pattern = "nc", full.names = TRUE)
+
+#dominio de interés
+xlim <- c(2600, 3950)
+ylim <- c(3700, 4750)
+
+tb_goes <- purrr::map(files, function(f) {
+  
+  meta <- unglue::unglue(basename(f), "OR_ABI-L1b-RadF-M3{channel}_G16_s{sdate}_e{edate}_c{cdate}.nc")
+  nc <- ncdf4::nc_open(f)
+  # mu <- ncvar_get(nc, "band_wavelength")*1e-6
+  out <- ReadNetCDF(f, vars = c(rad = "Rad", qf = "DQF"), 
+                    subset = list(x = xlim, y = ylim)) %>% 
+    .[, rad := calculate_rad(rad, nc)] %>% 
+    .[, tb := rad_to_tb(rad, nc)] %>% 
+    .[, channel := meta[[1]][["channel"]]] %>% 
+    .[, c("lon", "lat") := goes_projection(x, y, nc)] %>% 
+    .[]
+}) %>% 
+  rbindlist()
+
+
+tb_goes %>%
+  ggplot(aes(lon, lat)) +
+  geom_scattermore(aes(color = tb)) +
+  # scale_color_viridis_c() +
+  scale_color_topes() +
+  geom_mapa() +
+  coord_sf(xlim = c(-78, -50), ylim = c(-42, -19)) +
+  facet_wrap(~ channel, ncol = 5) +
+  labs(title = "GOES-16") +
+  theme_minimal() +
+  theme(panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3)) 
+```
+
+
+
+```{r echo=FALSE, fig.height=4, dpi=150}
+tb_crtm <- ReadNetCDF("/home/paola.corrales/datosmunin/G16.20181122_000000.012.nc") %>%
+  .[, ":="(south_north = NULL,
+           west_east = NULL)] 
+
+colnames(tb_crtm) <- c("lat", "lon", paste0("C", formatC(7:16, width = 2, flag = 0)))
+
+tb_crtm <- tb_crtm %>% 
+  melt(measure.vars = patterns("C"), variable.name = "channel", value.name = "tb") %>% 
+  .[, tb := tb - 273.15]
+
+tb_crtm %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = tb)) +
+  # scale_color_viridis_c() +
+  scale_color_topes() +
+  geom_mapa() +
+  coord_sf(xlim = range(tb_crtm$lon), ylim = range(tb_crtm$lat)) +
+  facet_wrap(~ channel, ncol = 5) +
+  labs(title = "CRTM") +
+  theme_minimal() +
+  theme(panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3)) 
+```
+## Aire claro
+
+```{r echo=FALSE}
+tb_goes[channel == "C15"] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_scattermore(aes(color = tb)) +
+  # scale_color_viridis_c() +
+  scale_color_topes() +
+  geom_rect(aes(xmin = -55, xmax = -52, ymin = -36, ymax = -33), 
+            color = "red", fill = NA) +
+  geom_rect(aes(xmin = -62, xmax = -58, ymin = -35, ymax = -31), 
+            color = "red", fill = NA) +
+  geom_mapa() +
+  coord_sf(xlim = range(tb_crtm$lon), ylim = range(tb_crtm$lat)) +
+  theme_minimal() +
+  theme(panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3)) 
+```
+
+```{r echo=FALSE}
+# aire claro
+
+xlim <- c(-55, -52)
+ylim <- c(-36, -33)
+set_channels <- c("C07", "C09", "C13", "C16")
+
+
+aire_claro <- tb_crtm[lon %between% xlim & 
+                        lat %between% ylim & channel %in% 
+                        set_channels] %>% 
+  setnames(old = "tb", new = "tb_crtm") 
+
+points <- unique(aire_claro, by = c("lon", "lat"))
+ac_goes <- tb_goes[lon %between% xlim & lat %between% ylim & channel %in% set_channels] %>% 
+  .[, interp::interp(lon, lat, tb, 
+                     xo = points$lon, 
+                     yo = points$lat,
+                     output = "points"),
+    by = channel] %>% 
+  setnames(c("x", "y", "z"), c("lon", "lat", "tb_goes"))
+
+aire_claro <- ac_goes[aire_claro, on = c("channel", "lon", "lat")] %>% 
+  .[, tierra := MaskLand(lon, lat, wrap = c(-180, 180))]
+
+aire_claro %>% 
+  melt(measure.vars = c("tb_crtm", "tb_goes"), value.name = "tb") %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = tb), size = 1) +
+  scale_color_topes() +
+  facet_grid(variable ~ channel) +
+  theme_minimal()
+
+
+```
+
+```{r echo=FALSE}
+aire_claro %>% 
+  ggplot(aes(tb_crtm, tb_goes)) +
+  geom_point(aes(color = tierra)) +
+  geom_abline(slope = 1, intercept = 0) +
+  scale_color_manual(values = c("deepskyblue4", "chartreuse4")) +
+  facet_wrap(~ channel, scales = "free") +
+  theme_minimal()
+```
+
+```{r echo=FALSE}
+aire_claro %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = tb_goes - tb_crtm)) +
+  geom_abline(slope = 1, intercept = 0) +
+  # scale_color_manual(values = c("deepskyblue4", "chartreuse4")) +
+  scale_color_divergent() +
+  facet_wrap(~ channel, scales = "free") +
+  theme_minimal()
+```
+
+```{r echo=FALSE}
+aire_claro %>% 
+  melt(measure.vars = c("tb_crtm", "tb_goes"), value.name = "tb") %>% 
+  ggplot(aes(tb)) +
+  geom_histogram(aes(fill = variable), 
+                 position="identity", 
+                 alpha = 0.5,
+                 binwidth = 1) +
+  facet_wrap(~ channel, scales = "free") +
+  theme_minimal()
+```
+
+## Con nubes
+
+```{r echo=FALSE}
+# nuboso
+
+xlim <- c(-62, -58)
+ylim <- c(-35, -31)
+set_channels <- c("C07", "C09", "C13", "C16")
+
+
+nuboso <- tb_crtm[lon %between% xlim & 
+                    lat %between% ylim & channel %in% 
+                    set_channels] %>% 
+  setnames(old = "tb", new = "tb_crtm") 
+
+points <- unique(nuboso, by = c("lon", "lat"))
+nu_goes <- tb_goes[lon %between% xlim & 
+                     lat %between% ylim & 
+                     channel %in% set_channels] %>% 
+  .[, interp::interp(lon, lat, tb, 
+                     xo = points$lon, 
+                     yo = points$lat,
+                     output = "points"),
+    by = channel] %>% 
+  setnames(c("x", "y", "z"), c("lon", "lat", "tb_goes"))
+
+nuboso <- nu_goes[nuboso, on = c("channel", "lon", "lat")] %>% 
+  .[, tierra := MaskLand(lon, lat, wrap = c(-180, 180))]
+
+nuboso %>% 
+  melt(measure.vars = c("tb_crtm", "tb_goes"), value.name = "tb") %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = tb), size = 1) +
+  scale_color_topes() +
+  facet_grid(variable ~ channel) +
+  theme_minimal()
+
+
+```
+
+```{r echo=FALSE}
+nuboso %>% 
+  ggplot(aes(tb_crtm, tb_goes)) +
+  geom_point(aes(color = tierra)) +
+  geom_abline(slope = 1, intercept = 0) +
+  scale_color_manual(values = c("deepskyblue4", "chartreuse4")) +
+  facet_wrap(~ channel, scales = "free") +
+  theme_minimal()
+```
+
+```{r echo=FALSE}
+nuboso %>% 
+  melt(measure.vars = c("tb_crtm", "tb_goes"), value.name = "tb") %>% 
+  ggplot(aes(tb)) +
+  geom_histogram(aes(fill = variable, y = ..density..), 
+                 position = "identity", alpha = 0.7,
+                 binwidth = 5) +
+  facet_wrap(~ channel, scales = "free") +
+  theme_minimal()
+```

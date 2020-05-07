@@ -1,0 +1,319 @@
+---
+title: "103_sondeos_RELAMPAGO"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(metR)
+library(data.table)
+library(lubridate)
+source("help_functions.R")
+source("postprocesamiento.R")
+```
+
+```{r}
+files <- list.files(path = "/home/paola.corrales/datosmunin/DA/DA_DATA/OBS_RELAMPAGO/sondeos_raw",
+                    pattern = "cls", full.names = TRUE)
+
+sondeos <- purrr::map(files, ~ read_radiosonde_relampago(.x)) %>%
+  rbindlist()
+
+# sondeos <- sondeos[!(site == "Mobile/CSU_Mobile" &
+#                    nominal_launch_time == as_datetime("2018-11-22 16:00:00"))]
+```
+
+Hay 129 sondeos entre las 18Z del 20/11 y las 12Z del 23/11!
+
+```{r}
+sondeos %>% 
+  unique(by = c("launch_time", "site")) %>% 
+  .[, .N, by = site] %>% 
+  knitr::kable()
+```
+
+## Intento de interpolación
+
+```{r eval=FALSE, include=FALSE}
+bench::bench_time({
+  
+  ncfile <- "/home/paola.corrales/datosmunin/EXP/E4/ANA/20181120180000/analysis.mem001"
+  
+  fcst <- ReadNetCDF(ncfile, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 
+                                      lon = "XLONG", lat = "XLAT")) %>%
+    .[, p := p + PB] %>%
+    .[, t := tk(t, p)] %>%
+    .[, rh := rh(qv, p, t)] %>% 
+    .[, td := td(qv, p) + 273.15] %>% 
+    .[, ":="(Time = NULL,
+             west_east = NULL,
+             south_north = NULL,
+             qv = NULL,
+             PB = NULL)] %>% 
+    .[, c("u", "v") := uvmet(ncfile)] %>% 
+    .[, time := lubridate::ymd_hms("20181120180000")] %>% 
+    .[, ":="(exp = "E4",
+             member = "01",
+             init_time = "place_holder")]
+  
+  fcst_time <- lubridate::ymd_hms("20181122175000")
+  
+  intervalo <- interval(fcst_time - minutes(5), fcst_time + minutes(5))
+  
+  subset <- sondeos[time %within% intervalo] %>% 
+    .[, c("xp", "yp") := wrf_project(lon, lat, round = FALSE)]
+  
+  unique_subset <- subset %>% unique(by = c("lat", "lon"))
+  # unique_subset <- subset %>% unique(by = c("site", "launch_time"))
+  
+  unique_site <- unique_subset %>% unique(by = "site")
+  # map_proj <- "+proj=lcc +lat_1=-30.966 +lat_0=-30.966 +lon_0=-63.567"
+  # 
+  # projection <- fcst[bottom_top == 1] %>% 
+  #   .[, c(list(lon = lon, lat = lat),
+  #         proj4::project(list(lon, lat), proj = map_proj))]
+  #     
+  # proj4::ptransform(list(projection$lon/180*pi, projection$lat/180*pi), 
+  #                   # "+proj=lonlat", map_proj)
+  
+  fcst_obs <- purrr::map(unique_site$site, function(x) {
+    rx <- range(unique_subset[site == x]$lon, na.rm = TRUE) + c(-1, 1)
+    ry <- range(unique_subset[site == x]$lat, na.rm = TRUE) + c(-1, 1)
+    out <- fcst %>% 
+      .[lat %between% ry & lon %between% rx] %>%
+      melt(id.vars = c("bottom_top", "lon", "lat", "time", "init_time", "exp", "member")) %>% 
+      .[, c("xp", "yp") := wrf_project(lon, lat)] %>%
+      .[, interp_lite(xp, yp, value, 
+                      xo = unique_subset[site == x]$xp, 
+                      yo = unique_subset[site == x]$yp,
+                      output = "points"),
+        by = .(bottom_top, variable, time, init_time, exp, member)]
+  }) %>% 
+    rbindlist() 
+  
+  # fcst_obs <- fcst_obs[variable != "p"] %>% 
+  #   .[fcst_obs[variable == "p"], 
+  #     on = c("bottom_top", "time", "x", "y", "exp", "member")] %>% 
+  #   setnames(c("x", "y", "z", "i.z"), c("xp", "yp", "value", "p"))
+  # 
+  # approx_safe <- function(lon_by, lat_by, variable_by, p) {
+  #   # browser()
+  #   sub <- fcst_obs[xp == lon_by & yp == lat_by &
+  #                     variable == variable_by]
+  #   if (nrow(sub) < 2) {
+  #     return(NA_real_)
+  #   } else {
+  #     approx(x = sub$p*0.01,  y = sub$value, xout  = p)$y
+  #   }
+  #   
+  # }
+  # 
+  # subset <- subset %>%
+  #   melt(measure.vars = c("t", "td", "rh", "u", "v")) %>%
+  #   .[, fcst_value := approx_safe(.BY$xp, .BY$yp, .BY$variable, p),
+  #     by = .(xp, yp, variable)] %>%
+  #   .[, ":="(exp = "E4",
+  #            member = "01")] %>%
+  #   .[]
+  
+  fcst_obs <- fcst_obs[variable != "p"] %>% 
+    .[fcst_obs[variable == "p"], 
+      on = c("bottom_top", "time", "x", "y", "init_time", "exp", "member")] %>% 
+    setnames(c("x", "y", "z", "i.z"), c("xp", "yp", "value", "p"))
+  
+  approx_safe <- function(lon_by, lat_by, variable_by, p) {
+    sub <- fcst_obs[xp == lon_by & yp == lat_by &
+                      variable == variable_by]
+    if (nrow(sub) < 2) {
+      return(NA_real_)
+    } else {
+      approx(x = sub$p*0.01,  y = sub$value, xout  = p)$y
+    }
+    
+  }
+  
+  
+  subset <- subset %>% 
+    melt(measure.vars = c("t", "td", "rh", "u", "v")) %>% 
+    .[, fcst_value := approx_safe(.BY$xp, .BY$yp, .BY$variable, p), 
+      by = .(xp, yp, variable)] %>%
+    .[, ":="(exp = "E4",
+             member = "01")] %>%
+    .[]
+  
+  fwrite(subset, "file.csv")
+})
+
+
+subset[variable %in% c("t", "td"), fcst_value := fcst_value -273.15] %>%
+  ggplot(aes(value, fcst_value)) +
+  geom_point(aes(color = launch_time)) +
+  geom_abline(intercept = 0, slope = 1) +
+  # coord_equal() +
+  facet_wrap(~ variable, scales = "free")
+
+# Filtro por tiempo (10minutos alrededor del fcst)
+# unique latlon (cada sondeo tiene una ubicación única), me quedan como máximo 10 puntos
+# interp(lat.sonde, lon.sonde, lat.fcst, lat.fcst, z.fcst) by = (nivel, variable) --> eso me devuelve un dataframe con cant.sondeos x niveles x variables. 
+# Ahora interpolación en la vertical. approx(x = p.fcst, y = var.fcst, xout = p.sondeo)
+```
+
+
+```{r}
+regular_sondeos <- fread("/home/paola.corrales/datosmunin/sondeos.csv") %>% 
+  .[,  regular_fcst := if_else(variable %in% c("t", "td"), 
+                               regular_fcst -273.15, regular_fcst)] %>% 
+  .[,  regular_fcst_mean := mean(regular_fcst, na.rm = TRUE), 
+    by = .(variable, regular_p, launch_time)] %>% 
+  .[, launch_time := lubridate::ymd_hms(launch_time)]
+
+regular_sondeos %>% 
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, group = variable)) +
+  scale_color_viridis_d() +
+  scale_y_level() +
+  facet_wrap(~ medida, scales = "free_x") +
+  labs(title = "Forecast 22/11 00Z to 23/11 12Z",
+       subtitle = "CONV experiment",
+       x = "") +
+  theme_minimal()
+
+```
+
+
+```{r}
+SMN <- unique(regular_sondeos$site)[c(1, 3:7)]
+Otros <- unique(regular_sondeos$site)[c(2, 8:15)]
+
+regular_sondeos[site %in% SMN] %>% 
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, site)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, group = variable)) +
+  scale_color_viridis_d() +
+  scale_y_level() +
+  facet_grid( medida ~ site) +
+  labs(title = "SMN stations ",
+       subtitle = "Forecast 22/11 00Z to 23/11 12Z from CONV experiment",
+       x = "") +
+  theme_minimal()
+
+regular_sondeos[site %in% Otros] %>% 
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, site)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, group = variable)) +
+  scale_color_viridis_d() +
+  scale_y_level() +
+  facet_grid( medida ~ site) +
+  labs(title = "RELAMPAGO sites",
+       subtitle = "Forecast 22/11 00Z to 23/11 12Z from CONV experiment",
+       x = "") +
+  theme_minimal()
+
+```
+
+```{r}
+
+regular_sondeos[variable != "rh"] %>% 
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, day = day(launch_time), hour = hour(launch_time))] %>% 
+  .[, date := lubridate::make_datetime(year = 2018, month = 11, day, hour)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(date, regular_p)) +
+  geom_raster(aes(fill = value), size = 0.5) +
+  scale_fill_divergent() +
+  scale_y_level() +
+  scale_x_datetime(date_breaks = "6 hour", date_labels = "%H Z") +
+  facet_grid(medida ~  variable) +
+  labs(caption = "average over time")
+```
+```{r}
+files <- list.files(path = "analisis/sondeos/det20181122000000/", full.names = TRUE)
+
+regular_p <- seq(10, 1015, 5)
+
+sondeos <- purrr::map(files, function(f) {
+  
+  str <- unglue::unglue(basename(f), "sondeo_{exp}_det{time}.csv")
+  
+  out <- fread(f) %>%
+    # .[, ens := str[[1]][["member"]]] %>%
+    .[, ":="(ele = NULL,
+             azi = NULL,
+             qp = NULL,
+             qt = NULL,
+             qrh = NULL,
+             qu = NULL,
+             qv = NULL,
+             qdZ = NULL)] %>% 
+    setnames(c("value"), c("obs_value")) %>% 
+    .[]
+  
+}) %>% rbindlist(fill = TRUE) %>% 
+  .[,  fcst_value := if_else(variable %in% c("t", "td"), 
+                             fcst_value -273.15, fcst_value)] %>% 
+  .[, .(regular_obs = approx(p, obs_value, regular_p)$y,
+        regular_fcst = approx(p, fcst_value, regular_p)$y,
+        regular_p = regular_p,
+        lon = lon[1],
+        lat = lat[1]), by = .(launch_time, site, exp, variable)] %>%
+  .[,  regular_fcst_mean := mean(regular_fcst, na.rm = TRUE),
+    by = .(variable, regular_p, launch_time, exp)] %>% 
+  .[, launch_time := lubridate::ymd_hms(launch_time)]
+
+sondeos[variable != "rh" & !is.na(regular_fcst)] %>%
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, exp)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, linetype = exp, group = interaction(exp, variable))) +
+  scale_color_viridis_d() +
+  scale_linetype(name = "experiment", labels = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND")) +
+  scale_y_level() +
+  facet_wrap( ~ medida, scales = "free_x", 
+              labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
+  labs(subtitle = "Forecast 22/11 00Z to 23/11 12Z",
+       # subtitle = "CONV experiment",
+       x = "") +
+  theme_minimal()
+
+sondeos[variable != "rh" & !is.na(regular_fcst) & regular_p %between% c(800, 1000)] %>%
+  .[, .(bias = mean(regular_obs - regular_fcst_mean, na.rm = TRUE),
+        rmse = sd(regular_obs - regular_fcst_mean, na.rm = TRUE)),
+    by = .(variable, regular_p, exp)] %>% 
+  melt(measure.vars = c("bias", "rmse"), variable.name = "medida") %>% 
+  na.omit() %>% 
+  ggplot(aes(value, regular_p)) +
+  geom_path(aes(color = variable, linetype = exp, group = interaction(exp, variable))) +
+  scale_color_viridis_d() +
+  scale_linetype(name = "experiment", labels = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND")) +
+  scale_y_level() +
+  facet_wrap( ~ medida, scales = "free_x", 
+              labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
+  labs(subtitle = "Forecast 22/11 00Z to 23/11 12Z",
+       # subtitle = "CONV experiment",
+       x = "") +
+  # coord_cartesian(ylim = c(750, 1000)) +
+  theme_minimal()
+```
+
+
+

@@ -37,13 +37,14 @@ La diferencia en la humedad absoluta es importante solo en niveles bajos por deb
 
 Otra manera de analizar el impacto que generan las observaciones es calculando el "update" o sea la diferencia entre el análisis y el guess (que en este caso es un pronóstico a una hora).
 
-Y acá aparecen cosas raras. PORQUE EL UPDATE DE EXP CONV ES CASI CERO!!! Entre las 18 de 20/11 y las ~04 del 21/11 hay una diferencia del orden de 1e-4, después de eso es CERO y ocurre tanto para la humedad com para la temperatura. 😭😭😭😭😭
+Para la temperatura, el update ocurre en todos los niveles. Esto es así porque en todas las horas hay observaciones de aviones en distintos niveles, a lo que se suman los sondeos en algunas horas específicas. 
 
-Voy a investigar donde metí la pata esta vez.
+En el caso de la humedad, el update es importante en niveles bajos solamente con una "burbuja" de humedad el día de mayor convección. Si bien las observaciones de humedad de aviones parecen no existir (al menos en algunos prepbufrs) y de sondeo (no se asimilan, por la configuración de GSI, pero se podría cambiar).
+
 
 ```{r echo=FALSE, warning=FALSE}
-E3_tq <- fread("analisis/perfil_lev_T_Q_ana_E3.csv") %>% 
-  .[fread("analisis/perfil_lev_T_Q_guess_E3.csv"), on = c("lev", "date")] %>% 
+E5_tq <- fread("analisis/perfil_lev_T_Q_ana_E5.csv") %>% 
+  .[fread("analisis/perfil_lev_T_Q_guess_E5.csv"), on = c("lev", "date")] %>% 
   .[, date := ymd_hms(date)] %>% 
   setnames(c("T", "QVAPOR", "i.T", "i.QVAPOR"), c("T_ana", "Q_ana", "T_guess", "Q_guess")) %>% 
   .[, `:=`(T_update = T_ana - T_guess,
@@ -58,7 +59,7 @@ E4_tq <- fread("analisis/perfil_lev_T_Q_ana_E4.csv") %>%
            Q_update = Q_ana - Q_guess,
            exp = "CONV")]
 
-rbind(E3_tq, E4_tq) %>%  
+rbind(E5_tq, E4_tq) %>%  
  # .[exp == "CONV"] %>% 
   ggplot(aes(date, lev)) +
   geom_contour_fill(aes(z = T_update), breaks = seq(-0.6, 0.6, 0.1)) +
@@ -80,7 +81,7 @@ rbind(E3_tq, E4_tq) %>%
         panel.grid = element_line(linetype = 3))
 
 
-rbind(E3_tq, E4_tq) %>%  
+rbind(E5_tq, E4_tq) %>%  
  # .[exp == "CONV"] %>% 
   ggplot(aes(date, lev)) +
   geom_contour_fill(aes(z = Q_update*1000), breaks = seq(-0.3, 0.6, 0.1),) +
@@ -101,6 +102,71 @@ rbind(E3_tq, E4_tq) %>%
         panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3))
 ```
+
+### Update en niveles
+
+```{r echo=FALSE, warning=FALSE}
+E5_tq <- fread("analisis/campo_lev_T_Q_ana_E5.csv") %>% 
+  .[fread("analisis/campo_lev_T_Q_guess_E5.csv"), on = c("lev", "date", "south_north", "west_east")] %>% 
+  .[, date := ymd_hms(date)] %>% 
+  setnames(c("T", "QVAPOR", "i.T", "i.QVAPOR"), c("T_ana", "Q_ana", "T_guess", "Q_guess")) %>% 
+  .[, `:=`(T_update = T_ana - T_guess,
+           Q_update = Q_ana - Q_guess,
+           exp = "CONV+AUT")]
+
+E4_tq <- fread("analisis/campo_lev_T_Q_ana_E4.csv") %>% 
+  .[fread("analisis/campo_lev_T_Q_guess_E4.csv"), on = c("lev", "date", "south_north", "west_east")] %>% 
+  .[, date := ymd_hms(date)] %>% 
+  setnames(c("T", "QVAPOR", "i.T", "i.QVAPOR"), c("T_ana", "Q_ana", "T_guess", "Q_guess")) %>% 
+  .[, `:=`(T_update = T_ana - T_guess,
+           Q_update = Q_ana - Q_guess,
+           exp = "CONV")]
+```
+
+```{r echo=FALSE, warning=FALSE}
+E5_tq[lev == 500] %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_contour_fill(aes(z = T_update), breaks = seq(-4, 4, 1)) +
+  scale_fill_divergent(name = "Update",
+                       breaks = seq(-4, 4, 1),
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 25,
+                                                barheight = 0.8)) +
+  geom_contour(data = E4_tq[lev == 500], aes(z = T_update, linetype = factor(-sign(..level..))), 
+               color = "black",
+               size = 0.3,
+               breaks = seq(-4, 4, 1)) +
+  scale_linetype_discrete(guide = "none") +
+  facet_wrap(~factor(date)) +
+  coord_equal() +
+  labs(title = "500 hPa") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+
+E5_tq[lev == 200] %>% 
+  ggplot(aes(west_east, south_north)) +
+  geom_contour_fill(aes(z = T_update), breaks = seq(-4, 4, 1)) +
+  scale_fill_divergent(name = "Update",
+                       breaks = seq(-4, 4, 1),
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 25,
+                                                barheight = 0.8)) +
+  geom_contour(data = E4_tq[lev == 200], aes(z = T_update, linetype = factor(-sign(..level..))), 
+               color = "black",
+               size = 0.3,
+               breaks = seq(-4, 4, 1)) +
+  scale_linetype_discrete(guide = "none") +
+  facet_wrap(~factor(date)) +
+  coord_equal() +
+  labs(title = "200 hPa") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
 
 
 ## Diferencias en la horizontal 
@@ -124,13 +190,14 @@ En las tres variables analizadas se observa una zona al sur de Córdoba y Buenos
 ### Reflectividad
 
 ```{r}
-map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+# map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+map <- sf::read_sf("mapa/mapa.shp")
 
 geom_mapa <- function() {
   geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
 }
 
-dbz <- ReadNetCDF("analisis/dbz/maxdbz_ana_E3_20181122060000.nc", vars = c(dbz = "max_dbz", lon = "XLONG", lat = "XLAT")) %>% 
+dbz <- ReadNetCDF("analisis/dbz/maxdbz_ana_E5_20181122060000.nc", vars = c(dbz = "max_dbz", lon = "XLONG", lat = "XLAT")) %>% 
   .[, exp := "CONV+AUT"]
 
 dbz_E4 <- ReadNetCDF("analisis/dbz/maxdbz_ana_E4_20181122060000.nc", vars = c(dbz = "max_dbz", lon = "XLONG", lat = "XLAT")) %>% 
@@ -156,7 +223,9 @@ rbind(dbz, dbz_E4) %>%
 Vamos a reconocer que hay un elefante en la sala y que algo en el sistema de asimilación no está funcionando como debería. Vamos a analizar las observaciones asimiladas por cada experimento.
 
 ```{r echo=FALSE}
-files <- list.files("analisis/diagfiles/", recursive = TRUE, full.names = TRUE, pattern = "asim_conv")
+
+# files <- list.files("analisis/diagfiles/", recursive = TRUE, full.names = TRUE, pattern = "asim_conv")
+files <- Sys.glob("analisis/diagfiles/E[4-5]/asim_conv*")
 
 obs <- purrr::map(files, function(f) { 
   diag <- fread(f) %>% 
@@ -167,7 +236,7 @@ obs <- purrr::map(files, function(f) {
   rbindlist() %>% 
   .[, c("V2", "V4") := NULL]
 
-colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "date")
+colnames(obs) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "date")
 
 obs[, .N, by = .(exp, var, usage.flag)] %>% 
   dcast(exp + usage.flag ~ var, value.var = "N") %>% 
@@ -180,7 +249,7 @@ De esta figura me preocupan varias cosas:
 * La cantidad de observaciones rechazadas (línea a trazos), sobre todo en la humedad. En la presión no me molesta porque estoy agregando observaciones de estaciones automáticas que no tienen esa observación y entonces cuando mira p rechaza el registro.
 * El cambio en uv justo antes de las 00Z del 22 --> Como que de repente las que se rechazaban se dejan de rechazar. Habré usado la rutina incorrecta para codificar las observaciones de estaciones automáticas A MITAD DE CAMINO?
 
-
+*Update: TODO ARREGLADO!!*
 
 ```{r echo=FALSE}
 obs[, .N, by = .(var, date, exp, usage.flag)] %>% 
@@ -196,9 +265,20 @@ obs[, .N, by = .(var, date, exp, usage.flag)] %>%
 Respecto del segundo punto: Todas las observaciones tipo 181 de humedad son rechazadas. Resulta que me olvide de sacar el -1 en el archivo *convinfo*. Parece que hice lo mismo para uv (tipo 287).
 
 ```{r echo=FALSE}
+obs[var == "t", .N, by = .(var, type, date, exp, usage.flag)] %>% 
+  ggplot(aes(date, N)) +
+  geom_line(aes(color = factor(type))) +
+  geom_point(aes(color = factor(type))) +
+  facet_wrap(usage.flag ~ exp, scales = "free") +
+  labs(title = "Observaciones de temperatura",
+       linetype = "Uso", 
+       color = "type") +
+  theme_minimal()
+
 obs[var == "q", .N, by = .(var, type, date, exp, usage.flag)] %>% 
   ggplot(aes(date, N)) +
   geom_line(aes(color = factor(type))) +
+  geom_point(aes(color = factor(type))) +
   facet_wrap(usage.flag ~ exp, scales = "free") +
   labs(title = "Observaciones de humedad",
        linetype = "Uso", 
@@ -208,6 +288,7 @@ obs[var == "q", .N, by = .(var, type, date, exp, usage.flag)] %>%
 obs[var == "uv", .N, by = .(var, type, date, exp, usage.flag)] %>% 
   ggplot(aes(date, N)) +
   geom_line(aes(color = factor(type))) +
+  geom_point(aes(color = factor(type))) +
   facet_wrap(usage.flag ~ exp, scales = "free") +
   labs(title = "Observaciones de viento",
        linetype = "Uso", 
@@ -215,11 +296,80 @@ obs[var == "uv", .N, by = .(var, type, date, exp, usage.flag)] %>%
   theme_minimal()
 ```
 
+### Observaciones 287 no asimiladas, que pasó?
 
-
+Muchas estaciones tienen datos faltantes, no siempre pero en algunos casos llegan a sumar 500 observaciones durante el experimento. Calculando la cantidad de observaciones por ciclo de asimilación da un promedio de 1800, aproximadamente lo que da en el gráfico.  
 
 ```{r echo=FALSE}
-obs[var == "q"] %>% 
-  .[]
+obs[var == "uv" & type == 287 & exp == "E5"] %>% 
+  .[obs.guess < -10000] %>% 
+  .[, .N, by = .(stationID, lon, lat)] %>% 
+  .[] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -50), ylim = c(-42, -20)) +
+  geom_point(aes(color = N)) +
+  labs(title = "Algunas estaciones tienen muchos NAs",
+       subtitle = "Viento",
+       x = "lon") +
+  theme_minimal()
+
+```
+
+### Observaciones de aviones
+
+Los prepbufrs contienen 3 tipos de observaciones provenientes de aviones:
+
+- 130/230: AIREP
+- 131/231: AMDAR
+- 133/233: MDCRS ACARS
+
+De los 3 tipos, 131/231 tiene más observaciones.
+```{r echo=FALSE}
+obs[type %in% c(130, 131, 133, 230, 231, 233) & exp == "E5"] %>% 
+  .[, .N, by = .(type, usage.flag)] %>% 
+  dcast(type~usage.flag)
+```
+
+Por ahora según la configuración de la **errtable** algunas observaciones de humedad no se asimilan (también está así en el archivo **convinfo**). Pero serán tan malas?
+
+| tipo | temp | q | uv |
+|:--:|:---:|:---:|:---:|
+|130| 2.5 | NA | - |
+|131| 1.47 | NA | - |
+|133 |1.47 |1.94 | - |
+|230| - | - | 3.6 |
+|231 | - | - | 3.0 |
+|233 | -  | - | 2.5 |
+
+Veamos que pinta tiene la diferencia entre las observaciones y el guess.
+
+```{r echo=FALSE}
+obs[type %in% c(130, 131, 133)] %>% 
+  .[] %>% 
+  ggplot(aes(obs.guess)) +
+  geom_density() +
+  facet_grid(usage.flag~type, scale = "free_y")
+
+obs[type %in% c(230, 231, 233)] %>% 
+  .[] %>% 
+  ggplot(aes(obs.guess)) +
+  geom_density() +
+  facet_grid(type ~ var)
+```
+
+```{r}
+obs[type %in% c("131", "231") & exp == "E5"] %>% 
+  ggplot(aes(obs.guess, pressure)) +
+  geom_point(alpha = 0.01) +
+  scale_y_level() +
+  facet_grid(type ~ usage.flag)
+```
+
+```{r}
+obs[type == 131 & exp == "E5" & date == "2018-11-22 00:00:00" & usage.flag == 1] 
+  
+  
+
 ```
 
