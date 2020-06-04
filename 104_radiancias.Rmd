@@ -254,3 +254,54 @@ nuboso %>%
   facet_wrap(~ channel, scales = "free") +
   theme_minimal()
 ```
+
+# Corrección del BIAS
+
+De acuerdo a la guía del usuario avanzda de GSI, para asimilar radiansas y que estas generen un impacto positivo en el prónosticos, es impresindible corregigir el bias asociado a cada instrumento y canal. 
+
+GSI corrige el BIAS sobre la diferencia entre la observación y el background teniendo en cuenta dos posibles fuentes de BIAS:
+
+- Air mass bias correction (corrección variacional): usa los coeficientes definidos en `satbias_in`
+- Angle dependendat bias correction: asociado al ángulo de escaneo para cada punto y cuyos coeficientes se guardan en `satbias_angle`
+
+Ambos set de coeficientes se deben ir actualizando en cada ciclo de asimilación, actualmente esa actualización se hace internamente (siempre que se configuren los argumentos necesarios en el namelist). De acuerdo a la guía los coeficientes para la correcciónn del bias tienen un spin up muy lento y deben ser entranados por semanas o meses. Una alternativa posibles es repetir cada ciclo de asimilación 10-12 veces antes de pasar al siguiente, cada vez actualizando los coeficientes. 
+
+Una tercera opción sería probar con los coeficientes que se guardas en GDAS y que usa GFS. No necesariamente es una buena solución ya que son modelos distintos con distinta resolución y dominio. Pero tal vez se puede partir de esos coeficientes para que el spin up sea más corto (en comparación con empezar en 0).
+
+Queda por responder ¿cómo se que los coeficientes ya están bien entrenados y puedo usarlos?
+
+## Lectura de coeficientes de GDAS
+
+Maravillosamente los archivos en GDAS son de texto plano y tienen el formanto GSI friendly. Ahora me resulta obvio, pero nunca se sabe!
+
+Entonces, hay un archivo cada 6 horas que se va actualizando.
+
+- **gdas.txxz.abias y gdas.txxz.abias_pc**: Según la guía de GSI es "combined satellite angle dependent and mass bias correction coefficient file". El segundo para canales "pasivos" (que se monitorean).
+
+Al parecer y de acuerdo a las versiones recientes de la guia de usuario, la correción del bias asociado al ángulo y el ¿modelos? ¿backgroud? se hace conjuntamente y por eso los coeficientes se combinan en un solo archivos. 
+
+```{r}
+# Es un archivo de texto plano, que emoción!!
+satbias_in_file <- "/home/paola.corrales/datosmunin2/nomads.ncdc.noaa.gov/GDAS/201811/20181120/gdas.t00z.abias"
+```
+
+Para que la corrección se haga en conjunto es necesario indicarlo en el namelist:
+`adp_anglebc = .true.`
+
+```{bash}
+# for satellite bias correction
+cp ${OBS_ROOT}/gdas1.t12z.abias ./satbias_in
+cp ${OBS_ROOT}/gdas1.t12z.abias_pc ./satbias_pc_in
+```
+
+**Archivos presentes en la salida de GSI**
+
+- satbias_in: the input coefficients of bias correction for satellite radiance observations.
+- satbias_out: the output coefficients of bias correction for satellite radiance observations
+after the GSI run.
+- satbias_pc: the input coefficients of bias correction for passive satellite radiance observations
+- satbias_pc.out
+
+
+
+
