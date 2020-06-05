@@ -270,6 +270,8 @@ Una tercera opción sería probar con los coeficientes que se guardas en GDAS y 
 
 Queda por responder ¿cómo se que los coeficientes ya están bien entrenados y puedo usarlos?
 
+Funciones de peso: http://tropic.ssec.wisc.edu/real-time/amsu/explanation.html
+
 ## Lectura de coeficientes de GDAS
 
 Maravillosamente los archivos en GDAS son de texto plano y tienen el formanto GSI friendly. Ahora me resulta obvio, pero nunca se sabe!
@@ -303,5 +305,120 @@ after the GSI run.
 - satbias_pc.out
 
 
+## Prueba de asimilación
+```{r}
+ana_file <- "/home/paola.corrales/datosmunin/EXP/analysis.ensmean"
+ana <- ReadNetCDF(ana_file, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 
+                                 lon = "XLONG", lat = "XLAT")) %>%
+    .[, p := p + PB] %>%
+    .[, t := tk(t, p)] %>%
+    .[, rh := rh(qv, p, t)] %>% 
+    .[, td := td(qv, p) + 273.15] %>% 
+    .[, ":="(Time = NULL,
+             west_east = NULL,
+             south_north = NULL,
+             qv = NULL,
+             PB = NULL)] %>% 
+    .[, c("u", "v") := uvmet(ana_file)] %>% 
+  .[, file := "ana"]
+
+guess_file <- "/home/paola.corrales/datosmunin/EXP/wrfarw.ensmean"
+guess <- ReadNetCDF(guess_file, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 
+                                 lon = "XLONG", lat = "XLAT")) %>%
+    .[, p := p + PB] %>%
+    .[, t := tk(t, p)] %>%
+    .[, rh := rh(qv, p, t)] %>% 
+    .[, td := td(qv, p) + 273.15] %>% 
+    .[, ":="(Time = NULL,
+             west_east = NULL,
+             south_north = NULL,
+             qv = NULL,
+             PB = NULL)] %>% 
+    .[, c("u", "v") := uvmet(ana_file)] %>% 
+    .[, file := "guess"]
+
+dt <- rbind(ana, guess)
+```
+
+```{r}
+dt[bottom_top %in% seq(1, 35, 4)] %>% 
+  dcast(bottom_top + lon + lat ~ file, value.var = "t") %>% 
+  .[, diff_t := ana - guess] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = diff_t)) +
+  scale_color_divergent() +
+  geom_mapa() +
+  coord_sf(xlim = c(-78, -50), ylim = c(-42, -19)) +
+  facet_wrap(~ bottom_top) +
+  theme_minimal()
+
+dt[bottom_top %in% seq(1, 35, 4)] %>% 
+  dcast(bottom_top + lon + lat ~ file, value.var = "p") %>% 
+  .[, diff_p := ana - guess] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = diff_p)) +
+  scale_color_divergent() +
+  geom_mapa() +
+  coord_sf(xlim = c(-78, -50), ylim = c(-42, -19)) +
+  facet_wrap(~ bottom_top) +
+  theme_minimal()
+```
+
+```{r}
+diag_file <- read_diag_mean("analisis/diagfiles/", c("uv", "t", "p"))
+
+diag <- fread("analisis/diagfiles/asim_conv_20181121020000.ensmean") %>% 
+  .[V10 == 1] %>% 
+  .[, date := ymd_hms(20181121020000)] %>% 
+  .[, c("V2", "V4") := NULL]
+
+# cat("Archivo ", basename(files[f]))
+
+colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "date")
+
+uv <- diag[var == "uv"] %>% 
+  melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
+  .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
+  .[, variable := str_remove(variable, "2")] 
+
+vars <- rlang::syms(setdiff(names(uv), "value")) 
+uv <- uv %>% 
+  distinct(!!!vars, .keep_all = TRUE) %>% 
+  pivot_wider(names_from = variable, values_from = value) %>% 
+  setDT
+
+variable <- c(unique(diag$var), "u", "v")
+
+diag <- diag[var != "uv", -c("obs2", "obs.guess2"), with = FALSE] %>% 
+  rbind(uv) %>% 
+  .[var %in% variable] %>% 
+  .[, id := 1:.N] 
+
+diag <-  diag[, c("xp", "yp") := wrf_project(lon, lat, round = FALSE)]
+
+diag_unique <- unique(diag, by = c("xp", "yp"))
+
+ana_obs <- ana[] %>% 
+      melt(id.vars = c("bottom_top", "lon", "lat")) %>%
+  .[variable %in% c("t", "p") & bottom_top %between% c(1, 3)] %>% 
+      .[, c("xp", "yp") := wrf_project(lon, lat)] %>%
+      .[, interp_lite(xp, yp, value, 
+                      xo = diag_unique[var %in% c("t", "p")]$xp, 
+                      yo = diag_unique[var %in% c("t", "p")]$yp,
+                      output = "points"),
+        by = .(bottom_top, variable)]
+
+
+ana_obs <- ana_obs[variable != "p"] %>% 
+    .[ana_obs[variable == "p"], on = c("bottom_top", "x", "y")] %>% 
+    setnames(c("x", "y", "z", "i.z"), c("xp", "yp", "value", "p"))
+  
+diag <- diag[var != "q"] %>% 
+    melt(measure.vars = c("t", "u", "v")) %>% 
+    .[, fcst_value := approx_safe(.BY$xp, .BY$yp, .BY$variable, p), 
+      by = .(xp, yp, variable)]
+
+
+```
 
 
