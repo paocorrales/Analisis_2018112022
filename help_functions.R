@@ -77,6 +77,109 @@ read_diag <- function(path, variable) {
   return(obs)
 }
 
+# read_diag_mean ---------------------------------------------------------------
+# Read mean diagfiles and tidy uv observations
+
+read_diag_mean <- function(path, variable) {
+
+  
+  files <- Sys.glob(paste0(path, ".ensmean"))
+
+  
+obs <- purrr::map(files, function(f) {
+                   
+                   diag <- fread(f) %>% 
+                     .[V10 == 1] %>% 
+                     .[, exp := basename(dirname(files[f]))] %>% 
+                     .[, mem := str_extract(files[f], "\\d{3}$")] %>% 
+                     .[, date := ymd_hms(str_extract(files[f], "\\d{14}"))] %>% 
+                     .[, c("V2", "V4") := NULL]
+                   
+                   # cat("Archivo ", basename(files[f]))
+                   
+                   colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "mem", "date")
+                   
+                   if ("uv" %in% variable & length(variable) == 1) {
+                     
+                     diag <- diag[var == "uv"] %>% 
+                       melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
+                       .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
+                       .[, variable := str_remove(variable, "2")] 
+                     
+                     vars <- rlang::syms(setdiff(names(diag), "value")) 
+                     diag <- diag %>% 
+                       distinct(!!!vars, .keep_all = TRUE) %>%  
+                       pivot_wider(names_from = variable, values_from = value) %>% 
+                       setDT %>% 
+                       .[, id := 1:.N, by = mem] 
+                     
+                   } else if ("uv" %in% variable & length(variable) != 1) {
+                     
+                     
+                     uv <- diag[var == "uv"] %>% 
+                       melt(measure.vars = c("obs", "obs2", "obs.guess", "obs.guess2")) %>% 
+                       .[, var := if_else(str_detect(variable, "2"), "v", "u")] %>% 
+                       .[, variable := str_remove(variable, "2")] 
+                     
+                     vars <- rlang::syms(setdiff(names(uv), "value")) 
+                     uv <- uv %>% 
+                       distinct(!!!vars, .keep_all = TRUE) %>% 
+                       pivot_wider(names_from = variable, values_from = value) %>% 
+                       setDT
+                     
+                     variable <- c(variable, "u", "v")
+                     
+                     diag <- diag[var != "uv", -c("obs2", "obs.guess2"), with = FALSE] %>% 
+                       rbind(uv) %>% 
+                       .[var %in% variable] %>% 
+                       .[, id := 1:.N, by = mem]  
+                     
+                   } else {
+                     diag <- diag[var %in% variable, -c("obs2", "obs.guess2"), with = FALSE] %>% 
+                       .[, id := 1:.N, by = mem] 
+                   }
+                   
+                   diag[, obs := ifelse(obs == -1e+05, NA, obs)][]
+                 
+}) %>% 
+    rbindlist()
+}
+
+
+# read satbias ------------------------------------------------------------
+
+read_satbias <- function(file) {
+
+library(tidyverse)
+library(data.table)
+
+string <- read_lines(file)
+split_chunks <- function(string) {
+  start <- seq(1, length(string), 3)
+  end <- c(start-1, length(string))[-1]
+  
+  obs_type <- stringr::str_extract(string[start], "\\d+")
+  
+  chunks <- purrr::map(seq_along(start), ~ string[(start[.x]):end[.x]])
+  chunks
+}
+
+string <- split_chunks(string)
+
+parse_chunk <- function(chunk) {
+  str_split(chunk, " ") %>% 
+    map( ~ str_subset(.x, "^$", negate = TRUE)) %>% 
+    unlist(., recursive = FALSE) 
+}
+
+satbias <- map(string, parse_chunk) %>% 
+  do.call(rbind, .) %>% 
+  as.data.frame() %>% 
+  setNames(c("id", "sensor", "channel", "tlp1", "tlp2", "nc", 
+             paste0("pred", seq(12)))) %>% 
+  mutate(across(tlp1:pred12, ~as.numeric(as.character(.x))))
+}
+
 # input_obs_error ---------------------------------------------------------
 
 input_obs_error <- function(variable, type, nivel, path_to_errtable = "errtable.csv") {

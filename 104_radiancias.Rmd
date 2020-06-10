@@ -83,7 +83,7 @@ tb_goes %>%
 
 
 ```{r echo=FALSE, fig.height=4, dpi=150}
-tb_crtm <- ReadNetCDF("/home/paola.corrales/datosmunin/G16.20181122_000000.012.nc") %>%
+tb_crtm <- ReadNetCDF("/home/paola.corrales/datosmunin/G16_20181122000000_012.nc") %>%
   .[, ":="(south_north = NULL,
            west_east = NULL)] 
 
@@ -290,7 +290,7 @@ satbias_in_file <- "/home/paola.corrales/datosmunin2/nomads.ncdc.noaa.gov/GDAS/2
 Para que la corrección se haga en conjunto es necesario indicarlo en el namelist:
 `adp_anglebc = .true.`
 
-```{bash}
+```{bash eval=FALSE, include=FALSE}
 # for satellite bias correction
 cp ${OBS_ROOT}/gdas1.t12z.abias ./satbias_in
 cp ${OBS_ROOT}/gdas1.t12z.abias_pc ./satbias_pc_in
@@ -364,7 +364,7 @@ dt[bottom_top %in% seq(1, 35, 4)] %>%
   theme_minimal()
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 diag_file <- read_diag_mean("analisis/diagfiles/", c("uv", "t", "p"))
 
 diag <- fread("analisis/diagfiles/asim_conv_20181121020000.ensmean") %>% 
@@ -420,5 +420,101 @@ diag <- diag[var != "q"] %>%
 
 
 ```
+
+
+```{r}
+
+files <- list.files("analisis/satbias/E7", pattern = "satbias_2", full.names = TRUE)
+
+satbias <- map(files, function(f){
+  meta <- unglue::unglue(f, "analisis/satbias/{exp}/satbias_{date}")
+  read_satbias(f) %>% 
+    as.data.table() %>% 
+    .[, ":="(exp = meta[[1]][["exp"]],
+             date = ymd_h(meta[[1]][["date"]]))]
+  
+}) %>% 
+  rbindlist()
+
+sensores <- c("amsua_n15",
+              "amsua_n18",
+              "amsua_metop_a",
+              "amsua_aqua",
+              "airs_aqua",
+              "hirs4_n19",
+              "hirs4_metop-a"
+              )
+
+satbias[sensor == "amsua_n15" & channel %in% c(1:15)] %>% 
+  # melt(measure.vars = paste0("pred", seq_len(1))) %>% 
+  ggplot(aes(date, pred1)) +
+  geom_line() +
+  facet_wrap(~channel, scales = "free_y")
+```
+
+BC_Constant: constant bias correction term
+BC_Scan_Angle: scan angle bias correction term
+BC_Cloud_Liquid_Water: CLW bias correction term
+BC_Lapse_Rate_Squared: square lapse rate bias correction term
+BC_Lapse_Rate: lapse rate bias correction term
+BC_Cosine_Latitude_times_Node: node*cos(lat) bias correction term
+BC_Sine_Latitude: sin(lat) bias correction term
+BC_Emissivity: emissivity sensitivity bias correction term
+BC_Fixed_Scan_Position: external scan angle
+
+```{r}
+files <- list.files("analisis/diagfiles/E7", pattern = "asim", full.names = TRUE)
+diag <- map(files, function(f){
+  meta <- unglue::unglue(f, "analisis/diagfiles/{exp}/asim_{sensor}_{plat}_{date}.ensmean")
+  print(f)
+  out <- fread(f)
+    # .[V10 == 1] %>% 
+    
+  if (file.size(f) != 0) {
+    out[, date := ymd_hms(meta[[1]][["date"]])]
+  }
+  out
+}) %>%
+  rbindlist()
+# cat("Archivo ", basename(files[f]))
+
+colnames(diag) <- c("sensor", "channel", "lat", "lon", "press", "dhr", "tb_obs", "tbc", "tbcnob",
+                    "errinv", "qc", "emis", "tlapchn", "rzen", "razi", "rlnd", "rice", "rsnw", "rcld", 
+                    "rcldp", paste0("pred", seq(8)), "date")
+
+diag[sensor == "amsua_n15" & channel %in% c(1, 2, 3, 6, 15)] %>% 
+  .[date == date[1]] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = tbc - tbcnob)) +
+  scale_color_divergent() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  facet_wrap(~channel, ncol = 3) +
+  theme_minimal()
+
+diag[sensor == "amsua_n15" & channel == 2] %>% 
+  .[date == date[1]] %>% 
+  melt(measure.vars = paste0("pred", seq_len(8))) %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = value)) +
+  scale_color_viridis_c() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  facet_wrap(~variable, ncol = 4) +
+  theme_minimal()
+
+```
+
+```{r}
+diag[sensor %in% c("amsua_aqua", "amsua_metop-a", "amsua_n15", "amsua_n18")] %>% 
+  ggplot(aes(factor(channel), tbc - tbcnob)) +
+  geom_boxplot() +
+  facet_wrap(~sensor)
+
+# diag[sensor %in% c("airs_aqua") & channel < 300] %>% 
+#   ggplot(aes(channel, tbc - tbcnob)) +
+#   geom_boxplot(aes(group = channel))
+```
+
 
 
