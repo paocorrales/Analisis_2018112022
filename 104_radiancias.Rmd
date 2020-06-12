@@ -445,11 +445,11 @@ sensores <- c("amsua_n15",
               "hirs4_metop-a"
               )
 
-satbias[sensor == "amsua_n15" & channel %in% c(1:15)] %>% 
-  # melt(measure.vars = paste0("pred", seq_len(1))) %>% 
-  ggplot(aes(date, pred1)) +
+satbias[sensor == "amsua_n15" & channel == 2] %>% 
+  melt(measure.vars = paste0("pred", seq_len(12))) %>% 
+  ggplot(aes(date, value)) +
   geom_line() +
-  facet_wrap(~channel, scales = "free_y")
+  facet_wrap(~variable, scales = "free_y")
 ```
 
 BC_Constant: constant bias correction term
@@ -494,7 +494,7 @@ diag[sensor == "amsua_n15" & channel %in% c(1, 2, 3, 6, 15)] %>%
 
 diag[sensor == "amsua_n15" & channel == 2] %>% 
   .[date == date[1]] %>% 
-  melt(measure.vars = paste0("pred", seq_len(8))) %>% 
+  melt(measure.vars = paste0("pred", 8)) %>% 
   ggplot(aes(ConvertLongitude(lon), lat)) +
   geom_point(aes(color = value)) +
   scale_color_viridis_c() +
