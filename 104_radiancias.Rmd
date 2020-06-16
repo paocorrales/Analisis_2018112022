@@ -452,21 +452,26 @@ satbias[sensor == "amsua_n15" & channel == 2] %>%
   facet_wrap(~variable, scales = "free_y")
 ```
 
-BC_Constant: constant bias correction term
-BC_Scan_Angle: scan angle bias correction term
-BC_Cloud_Liquid_Water: CLW bias correction term
-BC_Lapse_Rate_Squared: square lapse rate bias correction term
-BC_Lapse_Rate: lapse rate bias correction term
-BC_Cosine_Latitude_times_Node: node*cos(lat) bias correction term
-BC_Sine_Latitude: sin(lat) bias correction term
-BC_Emissivity: emissivity sensitivity bias correction term
-BC_Fixed_Scan_Position: external scan angle
+! radiance bias correction terms are as follows:
+!  pred(1,:)  = global offset
+!  pred(2,:)  = zenith angle predictor, is not used and set to zero now
+!  pred(3,:)  = cloud liquid water predictor for clear-sky microwave radiance assimilation
+!  pred(4,:)  = square of temperature laps rate predictor
+!  pred(5,:)  = temperature laps rate predictor
+!  pred(6,:)  = cosinusoidal predictor for SSMI/S ascending/descending bias
+!  pred(7,:)  = sinusoidal predictor for SSMI/S
+!  pred(8,:)  = emissivity sensitivity predictor for land/sea differences
+!  pred(9,:)  = fourth order polynomial of angle bias correction
+!  pred(10,:) = third order polynomial of angle bias correction
+!  pred(11,:) = second order polynomial of angle bias correction
+!  pred(12,:) = first order polynomial of angle bias correction
+
 
 ```{r}
 files <- list.files("analisis/diagfiles/E7", pattern = "asim", full.names = TRUE)
 diag <- map(files, function(f){
   meta <- unglue::unglue(f, "analisis/diagfiles/{exp}/asim_{sensor}_{plat}_{date}.ensmean")
-  print(f)
+  # print(f)
   out <- fread(f)
     # .[V10 == 1] %>% 
     
@@ -482,6 +487,19 @@ colnames(diag) <- c("sensor", "channel", "lat", "lon", "press", "dhr", "tb_obs",
                     "errinv", "qc", "emis", "tlapchn", "rzen", "razi", "rlnd", "rice", "rsnw", "rcld", 
                     "rcldp", paste0("pred", seq(8)), "date")
 
+diag[channel %in% c(1:4, 6, 7)] %>% 
+  melt(measure.vars = c("tbcnob", "tbc")) %>% 
+  ggplot(aes(value)) +
+  geom_density(aes(color = variable)) +
+  geom_vline(xintercept = 0) +
+    facet_wrap(~channel, scales = "free") +
+  labs(x = "Obs - Guess") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
 diag[sensor == "amsua_n15" & channel %in% c(1, 2, 3, 6, 15)] %>% 
   .[date == date[1]] %>% 
   ggplot(aes(ConvertLongitude(lon), lat)) +
@@ -494,7 +512,7 @@ diag[sensor == "amsua_n15" & channel %in% c(1, 2, 3, 6, 15)] %>%
 
 diag[sensor == "amsua_n15" & channel == 2] %>% 
   .[date == date[1]] %>% 
-  melt(measure.vars = paste0("pred", 8)) %>% 
+  melt(measure.vars = paste0("pred", seq(8))) %>% 
   ggplot(aes(ConvertLongitude(lon), lat)) +
   geom_point(aes(color = value)) +
   scale_color_viridis_c() +
@@ -517,4 +535,55 @@ diag[sensor %in% c("amsua_aqua", "amsua_metop-a", "amsua_n15", "amsua_n18")] %>%
 ```
 
 
+## Nueva prueba asimilando solo AMSU-A de NOAA-18
+
+```{r}
+
+files <- list.files("analisis/diagfiles/", pattern = "amsua_n15", full.names = TRUE)
+
+diag <- map(files, function(f) {
+  var_names <- GlanceNetCDF(f) %>% 
+  .$vars %>% 
+  names()
+
+diag <- ReadNetCDF(f, vars = var_names[c(10, 12, 13, 55:79)]) %>% 
+  .[, file := f]
+}) %>% 
+  rbindlist()
+
+diag[Channel_Index %in% c(1:4, 6, 7)] %>% 
+  melt(measure.vars = c("Obs_Minus_Forecast_unadjusted", "Obs_Minus_Forecast_adjusted")) %>% 
+  ggplot(aes(value)) +
+  geom_density(aes(color = variable)) +
+  geom_vline(xintercept = 0) +
+    facet_wrap(~Channel_Index, scales = "free") +
+  labs(x = "Obs - Guess") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+
+```{r}
+diag %>% 
+  melt(measure.vars = patterns("^BC_")) %>% 
+  ggplot(aes(ConvertLongitude(Longitude), Latitude)) +
+  geom_point(aes(color = value)) +
+  scale_color_viridis_c() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  facet_wrap(~variable, ncol = 4) +
+  theme_minimal()
+
+diag[Channel_Index == 2] %>% 
+
+  ggplot(aes(ConvertLongitude(Longitude), Latitude)) +
+  geom_point(aes(color = file)) +
+  # scale_color_viridis_c() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  # facet_wrap(~variable, ncol = 4) +
+  theme_minimal()
+
+```
 
