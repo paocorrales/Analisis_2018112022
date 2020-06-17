@@ -578,8 +578,8 @@ diag %>%
 diag[Channel_Index == 2] %>% 
 
   ggplot(aes(ConvertLongitude(Longitude), Latitude)) +
-  geom_point(aes(color = file)) +
-  # scale_color_viridis_c() +
+  geom_point(aes(color = Observation)) +
+  scale_color_viridis_c() +
   geom_mapa() +
   coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
   # facet_wrap(~variable, ncol = 4) +
