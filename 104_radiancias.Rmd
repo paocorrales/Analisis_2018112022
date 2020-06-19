@@ -566,13 +566,13 @@ diag[Channel_Index %in% c(1:4, 6, 7)] %>%
 
 ```{r}
 diag %>% 
-  melt(measure.vars = patterns("^BC_")) %>% 
+  # melt(measure.vars = patterns("^BCPred_")) %>% 
   ggplot(aes(ConvertLongitude(Longitude), Latitude)) +
-  geom_point(aes(color = value)) +
+  geom_point(aes(color = BCPred_Lapse_Rate_Squared)) +
   scale_color_viridis_c() +
   geom_mapa() +
   coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
-  facet_wrap(~variable, ncol = 4) +
+  facet_wrap(~Channel_Index, ncol = 4) +
   theme_minimal()
 
 diag[Channel_Index == 2] %>% 
@@ -582,7 +582,7 @@ diag[Channel_Index == 2] %>%
   scale_color_viridis_c() +
   geom_mapa() +
   coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
-  # facet_wrap(~variable, ncol = 4) +
+  facet_wrap(~variable, ncol = 4) +
   theme_minimal()
 
 ```
