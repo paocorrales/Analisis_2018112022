@@ -176,8 +176,8 @@ satbias <- map(string, parse_chunk) %>%
   do.call(rbind, .) %>% 
   as.data.frame() %>% 
   setNames(c("id", "sensor", "channel", "tlp1", "tlp2", "nc", 
-             paste0("pred", seq(12)))) %>% 
-  mutate(across(tlp1:pred12, ~as.numeric(as.character(.x))))
+             paste0("coeff", seq(12)))) %>% 
+  mutate(across(tlp1:coeff12, ~as.numeric(as.character(.x))))
 }
 
 # input_obs_error ---------------------------------------------------------
