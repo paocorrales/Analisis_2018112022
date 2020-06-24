@@ -11,6 +11,7 @@ library(metR)
 library(data.table)
 library(lubridate)
 library(scattermore)
+library(patchwork)
 source("help_functions.R")
 source("postprocesamiento.R")
 source("goes_functions.R")
@@ -309,33 +310,33 @@ after the GSI run.
 ```{r}
 ana_file <- "/home/paola.corrales/datosmunin/EXP/analysis.ensmean"
 ana <- ReadNetCDF(ana_file, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 
-                                 lon = "XLONG", lat = "XLAT")) %>%
-    .[, p := p + PB] %>%
-    .[, t := tk(t, p)] %>%
-    .[, rh := rh(qv, p, t)] %>% 
-    .[, td := td(qv, p) + 273.15] %>% 
-    .[, ":="(Time = NULL,
-             west_east = NULL,
-             south_north = NULL,
-             qv = NULL,
-             PB = NULL)] %>% 
-    .[, c("u", "v") := uvmet(ana_file)] %>% 
+                                     lon = "XLONG", lat = "XLAT")) %>%
+  .[, p := p + PB] %>%
+  .[, t := tk(t, p)] %>%
+  .[, rh := rh(qv, p, t)] %>% 
+  .[, td := td(qv, p) + 273.15] %>% 
+  .[, ":="(Time = NULL,
+           west_east = NULL,
+           south_north = NULL,
+           qv = NULL,
+           PB = NULL)] %>% 
+  .[, c("u", "v") := uvmet(ana_file)] %>% 
   .[, file := "ana"]
 
 guess_file <- "/home/paola.corrales/datosmunin/EXP/wrfarw.ensmean"
 guess <- ReadNetCDF(guess_file, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 
-                                 lon = "XLONG", lat = "XLAT")) %>%
-    .[, p := p + PB] %>%
-    .[, t := tk(t, p)] %>%
-    .[, rh := rh(qv, p, t)] %>% 
-    .[, td := td(qv, p) + 273.15] %>% 
-    .[, ":="(Time = NULL,
-             west_east = NULL,
-             south_north = NULL,
-             qv = NULL,
-             PB = NULL)] %>% 
-    .[, c("u", "v") := uvmet(ana_file)] %>% 
-    .[, file := "guess"]
+                                         lon = "XLONG", lat = "XLAT")) %>%
+  .[, p := p + PB] %>%
+  .[, t := tk(t, p)] %>%
+  .[, rh := rh(qv, p, t)] %>% 
+  .[, td := td(qv, p) + 273.15] %>% 
+  .[, ":="(Time = NULL,
+           west_east = NULL,
+           south_north = NULL,
+           qv = NULL,
+           PB = NULL)] %>% 
+  .[, c("u", "v") := uvmet(ana_file)] %>% 
+  .[, file := "guess"]
 
 dt <- rbind(ana, guess)
 ```
@@ -399,30 +400,49 @@ diag <-  diag[, c("xp", "yp") := wrf_project(lon, lat, round = FALSE)]
 diag_unique <- unique(diag, by = c("xp", "yp"))
 
 ana_obs <- ana[] %>% 
-      melt(id.vars = c("bottom_top", "lon", "lat")) %>%
+  melt(id.vars = c("bottom_top", "lon", "lat")) %>%
   .[variable %in% c("t", "p") & bottom_top %between% c(1, 3)] %>% 
-      .[, c("xp", "yp") := wrf_project(lon, lat)] %>%
-      .[, interp_lite(xp, yp, value, 
-                      xo = diag_unique[var %in% c("t", "p")]$xp, 
-                      yo = diag_unique[var %in% c("t", "p")]$yp,
-                      output = "points"),
-        by = .(bottom_top, variable)]
+  .[, c("xp", "yp") := wrf_project(lon, lat)] %>%
+  .[, interp_lite(xp, yp, value, 
+                  xo = diag_unique[var %in% c("t", "p")]$xp, 
+                  yo = diag_unique[var %in% c("t", "p")]$yp,
+                  output = "points"),
+    by = .(bottom_top, variable)]
 
 
 ana_obs <- ana_obs[variable != "p"] %>% 
-    .[ana_obs[variable == "p"], on = c("bottom_top", "x", "y")] %>% 
-    setnames(c("x", "y", "z", "i.z"), c("xp", "yp", "value", "p"))
-  
+  .[ana_obs[variable == "p"], on = c("bottom_top", "x", "y")] %>% 
+  setnames(c("x", "y", "z", "i.z"), c("xp", "yp", "value", "p"))
+
 diag <- diag[var != "q"] %>% 
-    melt(measure.vars = c("t", "u", "v")) %>% 
-    .[, fcst_value := approx_safe(.BY$xp, .BY$yp, .BY$variable, p), 
-      by = .(xp, yp, variable)]
+  melt(measure.vars = c("t", "u", "v")) %>% 
+  .[, fcst_value := approx_safe(.BY$xp, .BY$yp, .BY$variable, p), 
+    by = .(xp, yp, variable)]
 
 
 ```
 
+## Actualización de coeficientes
 
-```{r}
+En la etapa del LETKF la subrutina `update_biascorr()` se encarga de actualizar los coeficientes que se usan en la corrección del bias aplicando la metodología propuesta por Miyoshi et. al. (2010) y que según Zhu et. al. (2019) en análoga a la versión variacional que utiliza GSI. En el mismo paper indican que la optimización con filtro de kalman en algunos casos funciona mejor y esto podría doberse a que es menos sensible al tamaño de la muestra (cantidad de observaciones).
+
+La rutina calcula el incremento de los coeficientes $\delta \beta$ de la siguiente manera:
+
+$$\delta \beta = (B_{\beta}^{-1} + P R^{-1}P^{T})^{-1}PR^{-1}[y-H(x)-P^T\beta]$$
+
+Donde $B^{-1}_\beta$ la matriz de covarianza de los coeficientes es diagonal y sus elementos valen 0.1.
+
+La estimación de $\delta \beta$ se realiza iterativamente tantas veces como el argumento `numiter` del namelist lo indique (por defecto 6).
+
+Previamente al cálculo del incremento se realiza una estimación adaptativa de la varianza de los errores que impacta en la matriz $B$. Actualmente el algoritmo tiene en cuenta: 
+
+- Si es la primera vez que se asimila ese canal/sensor (revisar): $biaservar = 10000$
+- Si en algún ciclo no hay observaciones de un canal/sensor: $biaservar = 2*biaservar + 1e-6$ (con un tope de $biaservar = 10$)
+- O, si eso está desectivado puede tomar un valor fijo dividido la cantidad de observaciones.
+
+
+
+```{r echo=FALSE}
 
 files <- list.files("analisis/satbias/E7", pattern = "satbias_2", full.names = TRUE)
 
@@ -442,57 +462,113 @@ sensores <- c("amsua_n15",
               "amsua_aqua",
               "airs_aqua",
               "hirs4_n19",
-              "hirs4_metop-a"
-              )
+              "hirs4_metop-a",
+              "mhs_metop-a",
+              "mhs_n19"
+)
 
-satbias[sensor == "amsua_n15" & channel == 2] %>% 
-  melt(measure.vars = paste0("coeff", seq_len(12))) %>% 
+satbias[sensor %in% sensores[1] & channel %in% c(4)] %>% 
+  melt(measure.vars = paste0("coeff", seq(3, 5))) %>% 
   ggplot(aes(date, value)) +
-  geom_point() +
-  facet_wrap(~variable, scales = "free_y")
+  geom_point(aes(group = channel), size= 0.5) +
+  geom_path(aes(group = channel), size= 0.5) +
+  labs(title = paste("Coefficientes for", sensores[1]),
+       subtitle = "Channel 4") +
+  facet_wrap(~variable, scales = "free_y", 
+             labeller = labeller(variable = c("coeff3" = "CLW",
+                                              "coeff4" = "TLR^2",
+                                              "coeff5" = "TLR"))) +
+  theme_minimal() +
+satbias[sensor %in% sensores[1] & channel %in% c(5)] %>% 
+  melt(measure.vars = paste0("coeff", seq(3, 5))) %>% 
+  ggplot(aes(date, value)) +
+  geom_point(aes(group = channel), size= 0.5) +
+  geom_path(aes(group = channel), size= 0.5) +
+  labs(subtitle = "Channel 5") +
+  facet_wrap(~variable, scales = "free_y", 
+             labeller = labeller(variable = c("coeff3" = "CLW",
+                                              "coeff4" = "TLR^2",
+                                              "coeff5" = "TLR"))) +
+  theme_minimal() +
+satbias[sensor %in% sensores[1] & channel %in% c(7)] %>% 
+  melt(measure.vars = paste0("coeff", seq(3, 5))) %>% 
+  ggplot(aes(date, value)) +
+  geom_point(aes(group = channel), size= 0.5) +
+  geom_path(aes(group = channel), size= 0.5) +
+  labs(subtitle = "Channel 7") +
+  facet_wrap(~variable, scales = "free_y", 
+             labeller = labeller(variable = c("coeff3" = "CLW",
+                                              "coeff4" = "TLR^2",
+                                              "coeff5" = "TLR"))) +
+  theme_minimal() +
+  
+satbias[sensor %in% sensores[1] & channel %in% c(8)] %>% 
+  melt(measure.vars = paste0("coeff", seq(3, 5))) %>% 
+  ggplot(aes(date, value)) +
+  geom_point(aes(group = channel), size= 0.5) +
+  geom_path(aes(group = channel), size= 0.5) +
+  labs(subtitle = "Channel 8") +
+  facet_wrap(~variable, scales = "free_y", 
+             labeller = labeller(variable = c("coeff3" = "CLW",
+                                              "coeff4" = "TLR^2",
+                                              "coeff5" = "TLR"))) +
+  theme_minimal() +
+  plot_layout(ncol = 1)
 ```
 
-! radiance bias correction terms are as follows:
-!  pred(1,:)  = global offset
-!  pred(2,:)  = zenith angle predictor, is not used and set to zero now
-!  pred(3,:)  = cloud liquid water predictor for clear-sky microwave radiance assimilation
-!  pred(4,:)  = square of temperature laps rate predictor
-!  pred(5,:)  = temperature laps rate predictor
-!  pred(6,:)  = cosinusoidal predictor for SSMI/S ascending/descending bias
-!  pred(7,:)  = sinusoidal predictor for SSMI/S
-!  pred(8,:)  = emissivity sensitivity predictor for land/sea differences
-!  pred(9,:)  = fourth order polynomial of angle bias correction
-!  pred(10,:) = third order polynomial of angle bias correction
-!  pred(11,:) = second order polynomial of angle bias correction
-!  pred(12,:) = first order polynomial of angle bias correction
+## Predictores 
 
+Según el código los predictores $p_i$ son:
+
+- pred(1,:)  = global offset
+- pred(2,:)  = zenith angle predictor, is not used and set to zero now
+- pred(3,:)  = cloud liquid water predictor for clear-sky microwave radiance assimilation
+- pred(4,:)  = square of temperature laps rate predictor
+- pred(5,:)  = temperature laps rate predictor
+- pred(6,:)  = cosinusoidal predictor for SSMI/S ascending/descending bias
+- pred(7,:)  = sinusoidal predictor for SSMI/S
+- pred(8,:)  = emissivity sensitivity predictor for land/sea differences
+- pred(9,:)  = fourth order polynomial of angle bias correction
+- pred(10,:) = third order polynomial of angle bias correction
+- pred(11,:) = second order polynomial of angle bias correction
+- pred(12,:) = first order polynomial of angle bias correction
+
+
+Se calculan utilizando información del guess y de la observación de radianza y luego se utilizan para calcular la corrección del bias para cada observación y que será aplicada sobre el *incremento*.
+
+$$ tbc = tbcnob + \sum_{i} p_i (\beta + \delta \beta)$$
 
 ```{r}
 files <- list.files("analisis/diagfiles/E7", pattern = "asim", full.names = TRUE)
 diag <- map(files, function(f){
   meta <- unglue::unglue(f, "analisis/diagfiles/{exp}/asim_{sensor}_{plat}_{date}.ensmean")
-  # print(f)
+  #print(f)
   out <- fread(f)
-    # .[V10 == 1] %>% 
-    
+  # .[V10 == 1] %>% 
+  
   if (file.size(f) != 0) {
     out[, date := ymd_hms(meta[[1]][["date"]])]
   }
   out
 }) %>%
   rbindlist()
-# cat("Archivo ", basename(files[f]))
 
 colnames(diag) <- c("sensor", "channel", "lat", "lon", "press", "dhr", "tb_obs", "tbc", "tbcnob",
                     "errinv", "qc", "emis", "tlapchn", "rzen", "razi", "rlnd", "rice", "rsnw", "rcld", 
                     "rcldp", paste0("pred", seq(8)), "date")
 
-diag[sensor == "amsua_n15" & channel %in% c(1:15)] %>% 
+diag[sensor == "amsua_n15" & channel %in% c(1:10)] %>% 
   melt(measure.vars = c("tbcnob", "tbc")) %>% 
-  ggplot(aes(value)) +
-  geom_density(aes(color = variable)) +
-  geom_vline(xintercept = 0) +
-    facet_wrap(~channel, scales = "free") +
+  .[, .(mean = mean(value),
+           sd = sd(value)), by = .(variable, channel, date)] %>% 
+  melt(measure.vars = c("mean", "sd"), variable.name = "estadistico") %>% 
+  ggplot(aes(date, value)) +
+  geom_point(aes(color = variable)) +
+  geom_path(aes(color = variable, linetype = estadistico)) +
+  scale_color_brewer(name = NULL, palette = "Set1", labels = c("tbcnob" = "sin BC",
+                                                  "tbc" = "con BC")) +
+  # geom_vline(xintercept = 0) +
+  facet_wrap(~channel, scales = "free") +
   labs(x = "Obs - Guess") +
   theme_minimal() +
   theme(legend.position = "bottom")
@@ -500,34 +576,91 @@ diag[sensor == "amsua_n15" & channel %in% c(1:15)] %>%
 
 
 ```{r}
-diag[sensor == "amsua_n15" & channel %in% c(1, 2, 3, 6, 15)] %>% 
+diag[sensor == "amsua_n15" & channel %in% c(1:8)] %>% 
   .[date == date[1]] %>% 
   ggplot(aes(ConvertLongitude(lon), lat)) +
   geom_point(aes(color = tbc - tbcnob)) +
-  scale_color_divergent() +
+  scale_color_divergent(name = "BIAS") +
   geom_mapa() +
   coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
-  facet_wrap(~channel, ncol = 3) +
+  labs(title = "amsua_n15",
+       x = "", y = "") +
+  facet_wrap(~channel, ncol = 4) +
   theme_minimal()
+```
+Pred2 = 1
+Pred3 = 0
+Pred7 = 0
+Pred8 = 0
 
+```{r echo=FALSE}
 diag[sensor == "amsua_n15" & channel == 2] %>% 
-  .[date == date[1]] %>% 
-  melt(measure.vars = paste0("pred", seq(8))) %>% 
+  # .[date == date[1]] %>% 
+  .[, date := factor(date)] %>% 
+  melt(measure.vars = paste0("pred", c(1))) %>% 
   ggplot(aes(ConvertLongitude(lon), lat)) +
-  geom_point(aes(color = value)) +
+  geom_point(aes(color = value), size = 1) +
   scale_color_viridis_c() +
   geom_mapa() +
   coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
-  facet_wrap(~variable, ncol = 4) +
+  labs(title = "Pred1",
+    x = "", y = "") +
+  facet_wrap(~date, ncol = 5) +
+  theme_minimal()
+
+diag[sensor == "amsua_n15" & channel == 2] %>% 
+  # .[date == date[1]] %>% 
+  .[, date := factor(date)] %>% 
+  melt(measure.vars = paste0("pred", c(4))) %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = value), size = 1) +
+  scale_color_viridis_c() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  labs(title = "Pred4",
+    x = "", y = "") +
+  facet_wrap(~date, ncol = 5) +
+  theme_minimal()
+
+
+diag[sensor == "amsua_n15" & channel == 2] %>% 
+  # .[date == date[1]] %>% 
+  .[, date := factor(date)] %>% 
+  melt(measure.vars = paste0("pred", c(5))) %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = value), size = 1) +
+  scale_color_viridis_c() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  labs(title = "Pred5",
+    x = "", y = "") +
+  facet_wrap(~date, ncol = 5) +
+  theme_minimal()
+
+diag[sensor == "amsua_n15" & channel == 2] %>% 
+  # .[date == date[1]] %>% 
+  .[, date := factor(date)] %>% 
+  melt(measure.vars = paste0("pred", c(6))) %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = value), size = 1) +
+  scale_color_viridis_c() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  labs(title = "Pred6",
+    x = "", y = "") +
+  facet_wrap(~date, ncol = 5) +
   theme_minimal()
 
 ```
 
 ```{r}
-diag[sensor %in% c("amsua_aqua", "amsua_metop-a", "amsua_n15", "amsua_n18")] %>% 
+diag[sensor %in% c("amsua_n15")] %>% 
   ggplot(aes(factor(channel), tbc - tbcnob)) +
+  geom_hline(yintercept = 0, color = "darkorange") +
   geom_boxplot() +
-  facet_wrap(~sensor)
+  labs(x = "Channel", y = "BIAS") +
+  facet_wrap(~sensor) +
+  theme_minimal()
 
 # diag[sensor %in% c("airs_aqua") & channel < 300] %>% 
 #   ggplot(aes(channel, tbc - tbcnob)) +
@@ -535,7 +668,7 @@ diag[sensor %in% c("amsua_aqua", "amsua_metop-a", "amsua_n15", "amsua_n18")] %>%
 ```
 
 
-## Nueva prueba asimilando solo AMSU-A de NOAA-18
+## Prueba de diagfiles en formato ncdf
 
 ```{r}
 
@@ -543,11 +676,11 @@ files <- list.files("analisis/diagfiles/", pattern = "amsua_n15", full.names = T
 
 diag <- map(files, function(f) {
   var_names <- GlanceNetCDF(f) %>% 
-  .$vars %>% 
-  names()
-
-diag <- ReadNetCDF(f, vars = var_names[c(10, 12, 13, 55:79)]) %>% 
-  .[, file := f]
+    .$vars %>% 
+    names()
+  
+  diag <- ReadNetCDF(f, vars = var_names[c(10, 12, 13, 55:79)]) %>% 
+    .[, file := f]
 }) %>% 
   rbindlist()
 
@@ -556,7 +689,7 @@ diag[Channel_Index %in% c(1:4, 6, 7)] %>%
   ggplot(aes(value)) +
   geom_density(aes(color = variable)) +
   geom_vline(xintercept = 0) +
-    facet_wrap(~Channel_Index, scales = "free") +
+  facet_wrap(~Channel_Index, scales = "free") +
   labs(x = "Obs - Guess") +
   theme_minimal() +
   theme(legend.position = "bottom")
@@ -576,7 +709,7 @@ diag %>%
   theme_minimal()
 
 diag[Channel_Index == 2] %>% 
-
+  
   ggplot(aes(ConvertLongitude(Longitude), Latitude)) +
   geom_point(aes(color = Observation)) +
   scale_color_viridis_c() +
