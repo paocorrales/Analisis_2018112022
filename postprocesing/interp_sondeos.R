@@ -4,13 +4,17 @@ if (length(args) != 3) {
   stop("Argumentos: exp, miembro, init_date (yyyymmddhh)", call.=FALSE)
 }
 
+args[1]
+args[2]
+args[3]
 
 library(metR)
 library(data.table)
 library(tidyverse)
 library(lubridate)
-source("help_functions.R")
-source("postprocesamiento.R")
+library(here)
+source(here("help_functions.R"))
+source(here("postprocesamiento.R"))
 
 # leo sondeos
 files <- list.files(path = "/glade/work/jruiz/sondeos_raw",
@@ -32,9 +36,9 @@ for (f in files) {
   message(paste("Procesando :", f))
   
   descriptores <- unglue::unglue(f, c("/glade/scratch/jruiz/EXP/{exp}/FCST/{fcst}/{member}/wrfout_d01_{date}.mean", "/glade/scratch/jruiz/EXP/{exp}/FCST/{fcst}/{member}/wrfout_d01_{date}"))
-  if (as.numeric(descriptores[[1]][["member"]]) <= 16) {
-	next
-}
+#  if (as.numeric(descriptores[[1]][["member"]]) <= 16) {
+#	next
+#}
   # Leo pronóstico con algo de post procesamiento
   fcst <- ReadNetCDF(f, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 
                                  lon = "XLONG", lat = "XLAT")) %>%
