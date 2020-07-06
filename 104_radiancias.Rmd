@@ -516,7 +516,7 @@ satbias[sensor %in% sensores[1] & channel %in% c(8)] %>%
   plot_layout(ncol = 1)
 ```
 
-## Predictores 
+### Predictores 
 
 Según el código los predictores $p_i$ son:
 
@@ -788,9 +788,9 @@ perfiles  %>%
 ```{r}
 perfiles %>% 
   ggplot(aes(date, lev)) +
-  geom_contour_fill(aes(z = Q_E7_E4*1000), breaks = seq(-0.0004, 0.0016, 0.0002)*1000) +
+  geom_contour_fill(aes(z = Q_E7_E4*1000), breaks = seq(-0.0004, 0.0004, 0.0001)*1000) +
   scale_fill_divergent(name = NULL,
-                       breaks = seq(-0.0004, 0.0016, 0.0002)*1000,
+                       breaks = seq(-0.0004, 0.0004, 0.0001)*1000,
                        guide = guide_colorstrip(inside = TRUE,
                                                 barwidth = 25,
                                                 barheight = 0.8)) +
@@ -832,9 +832,9 @@ perfiles  %>%
 ```{r}
 perfiles  %>% 
   ggplot(aes(date, lev)) +
-  geom_contour_fill(aes(z = V_E7_E4), breaks = seq(-1, 1, 0.2)) +
+  geom_contour_fill(aes(z = V_E7_E4), breaks = seq(-1, 2, 0.2)) +
   scale_fill_divergent(name = NULL,
-                       breaks = seq(-1, 1, 0.2),
+                       breaks = seq(-1, 2, 0.2),
                        guide = guide_colorstrip(inside = TRUE,
                                                 barwidth = 25,
                                                 barheight = 0.8)) +
@@ -850,11 +850,13 @@ perfiles  %>%
         panel.grid = element_line(linetype = 3))
 ```
 
+### Humedad y viento en niveles bajos
+
 ```{r warning=FALSE, fig.align="center", fig.height=9, fig.width=14, message=FALSE,}
 
 
 fcsts <- expand_grid(fcsts = c("20181122000000", "20181122060000"),
-                     exp = c("E4", "E5", "E6", "E7"))
+                     exp = c("E4", "E7"))
 
 coord <- ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lon = "XLONG")) %>%
   .[, lat := ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lat = "XLAT"))$lat]
@@ -878,7 +880,7 @@ q[bottom_top <= 7, .(q = mean(q), u = u[bottom_top == 1], v = v[bottom_top == 1]
   geom_point(aes(color = q*1000)) +
   scale_color_distiller(name = NULL,
                         palette = "BrBG", direction = 1,
-                        breaks = seq(0, 0.02, 0.002)*1000,
+                        breaks = seq(0, 0.016, 0.002)*1000,
                         guide = guide_colorstrip(inside = FALSE,
                                                  barwidth = 30,
                                                  barheight = 0.8)) +
@@ -887,7 +889,7 @@ q[bottom_top <= 7, .(q = mean(q), u = u[bottom_top == 1], v = v[bottom_top == 1]
   geom_sf(data = map, inherit.aes = FALSE, color = "black", fill = NA, size = 0.2) +
   coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
   facet_grid(date ~ exp, 
-             labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND", E7 = "RAD"))) +
+             labeller = labeller(exp = c(E4 = "CONV", E7 = "RAD"))) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   labs(title = "Low level humidity (g/Kg)",
@@ -907,18 +909,16 @@ diff_q_spd <- q[bottom_top <= 7, .(q = mean(q), u = u[bottom_top == 1], v = v[bo
   .[, date := factor(date)] %>%
   melt(id.vars = c("lon", "lat", "date", "exp"), measure.vars = c("q", "u", "v")) %>% 
   dcast(lon + lat + date + variable ~ exp, value.var = "value") %>% 
-  .[, diff_E6_E5 := E6 - E5] %>% 
-  .[, diff_E5_E4 := E5 - E4] %>% 
     .[, diff_E7_E4 := E7 - E4]
 
 diff_q_spd %>% 
-  melt(measure.vars = c("diff_E6_E5", "diff_E7_E4"), variable.name = "diff") %>%
+  melt(measure.vars = c("diff_E7_E4"), variable.name = "diff") %>%
   dcast(lon + lat + date + diff ~ variable, value.var = "value") %>% 
   # .[date %in% c("2018-11-22 00:00:00", "2018-11-22 06:00:00")] %>% 
   ggplot(aes(lon, lat)) +
-  geom_point(aes(color = q), breaks = seq(-0.01, 0.01, 0.002)) +
+  geom_point(aes(color = q)) +
   scale_color_divergent(name = NULL,
-                        breaks = seq(-0.01, 0.01, 0.002),
+                        breaks = seq(-0.008, 0.008, 0.002),
                         guide = guide_colorstrip(inside = FALSE,
                                                  barwidth = 0.8,
                                                  barheight = 20)) +
@@ -936,5 +936,337 @@ diff_q_spd %>%
   theme(panel.ontop = TRUE,
         panel.grid = element_line(linetype = 3),
         strip.background = element_blank())
+```
+
+### Temperatura y vientos en nivles altos
+
+```{r}
+fcsts <- expand_grid(fcsts = c("20181122000000", "20181122060000"),
+                     exp = c("E4", "E7"))
+
+coord <- ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lon = "XLONG")) %>%
+  .[, lat := ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lat = "XLAT"))$lat]
+
+t <- lapply(seq_len(nrow(fcsts)), function(f) {
+  
+  tmp <- ReadNetCDF(paste0("analisis/u_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(u = "uvmet")) %>% 
+    .[, v := ReadNetCDF(paste0("analisis/v_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(v = "uvmet"), out = "vector")] %>% 
+    .[, t := ReadNetCDF(paste0("analisis/t_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(t = "temp"), out = "vector")] %>% 
+    .[, date :=  ymd_hms(fcsts[f, 1])] %>% 
+    .[, exp := fcsts[f, 2]] %>%  
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  %>% 
+  .[, date := factor(date)] %>%
+  melt(id.vars = c("lon", "lat", "date", "exp", "bottom_top"), .[coord, on = c("south_north", "west_east")] 
+       measure.vars = c("t", "u", "v")) %>% 
+  dcast(lon + lat + date + variable + bottom_top ~ exp, value.var = "value") %>% 
+    .[, diff_E7_E4 := E7 - E4]
+
+t[bottom_top %in% seq(1, 28, 3) & variable == "t" & date == unique(date)[2]] %>% 
+  .[, date := factor(date)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = diff_E7_E4)) +
+  scale_color_divergent() +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, color = "black", size = 0.2) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~bottom_top, ncol = 5) +
+  labs(subtitle = "RAD - CONV",
+    x = "Longituted",
+    y = "Latitude", 
+    color = "Temperature difference (K)") +
+  theme_minimal(base_size = 16) +
+  theme(panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3),
+        legend.position = "bottom",
+        strip.background = element_blank())
+```
+
+```{r}
+fcsts <- expand_grid(fcsts = c("20181122060000"),
+                     exp = c("E4", "E7"))
+
+coord <- ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lon = "XLONG")) %>%
+  .[, lat := ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lat = "XLAT"))$lat]
+
+wind <- lapply(seq_len(nrow(fcsts)), function(f) {
+  
+  tmp <- ReadNetCDF(paste0("analisis/u_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(u = "uvmet")) %>% 
+    .[, v := ReadNetCDF(paste0("analisis/v_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(v = "uvmet"), out = "vector")] %>% 
+    .[, date :=  ymd_hms(fcsts[f, 1])] %>% 
+    .[, exp := fcsts[f, 2]] %>%  
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  .[coord, on = c("south_north", "west_east")] %>% 
+  .[, date := factor(date)] %>% 
+  .[, ":="(spd = sqrt(u^2 + v^2),
+           dir = circular::as.circular(atan2(u, v), 
+                                    type = "directions",
+                                    units = "degrees",
+                                    rotation = "counter",
+                                    zero = pi/2))] 
+
+wind[bottom_top %in% seq(1, 32, 4)] %>% 
+  dcast(bottom_top + lon + lat ~ exp, value.var = "spd") %>% 
+  .[, diff := E7 - E4] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = diff)) +
+  scale_color_divergent() +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, color = "black", size = 0.2) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~bottom_top, ncol = 4) +
+  labs(subtitle = "RAD - CONV",
+    x = "Longituted",
+    y = "Latitude", 
+    color = "Wind magnitude difference (m/s)") +
+  theme_minimal(base_size = 16) +
+  theme(panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3),
+        legend.position = "bottom",
+        strip.background = element_blank())
+```
+
+
+```{r}
+wind[bottom_top %in% c(1, 5, 9, 13, 21, 25, 37, 34)] %>% 
+  dcast(bottom_top + lon + lat ~ exp, value.var = "dir") %>% 
+  .[, diff := E7 - E4] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = diff)) +
+  scale_color_divergent() +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, color = "black", size = 0.2) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~bottom_top, ncol = 4) +
+  labs(subtitle = "RAD - CONV",
+    x = "Longituted",
+    y = "Latitude", 
+    color = "Wind direction difference") +
+  theme_minimal(base_size = 16) +
+  theme(panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3),
+        legend.position = "bottom",
+        strip.background = element_blank())
+```
+
+### Análisis del update
+
+```{r}
+dates_amsu <- diag[sensor == "amsua_n15", date] %>% unique(by = "date")
+
+perfil_ana_E7 <- fread("analisis/perfiles_ana_E7.csv") %>% 
+  .[, ":="(date = ymd_hms(date),
+           run = "ana")] 
+
+perfil_guess_E7 <- fread("analisis/perfiles_guess_E7.csv") %>% 
+  .[, ":="(date = ymd_hms(date),
+           run = "guess")] 
+
+
+perfiles <- perfil_ana_E7[perfil_guess_E7, on = c("lev", "date")] %>%
+  setnames(c("T", "QVAPOR", "U", "V", "SPD", 
+             "i.T", "i.QVAPOR", "i.U", "i.V", "i.SPD"),
+           c("T.ana", "Q.ana", "U.ana","V.ana", "SPD.ana",
+             "T.guess", "Q.guess", "U.guess","V.guess", "SPD.guess")) %>% 
+  .[] %>% 
+  .[, `:=`(T_diff = T.ana - T.guess,
+           Q_diff = Q.ana - Q.guess,
+           U_diff = U.ana - U.guess,
+           V_diff = V.ana - V.guess,
+           SPD_diff = SPD.ana - SPD.guess)]
+
+perfiles  %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = T_diff), breaks = seq(-0.2, 0.3, 0.05)) +
+  scale_fill_divergent(name = NULL,
+                       breaks = seq(-0.2, 0.3, 0.05),
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 25,
+                                                barheight = 0.8)) +
+  geom_vline(xintercept = dates_amsu) +
+  labs(title = "Temperature difference (K)",
+       subtitle = "RAD - CONV",
+       x = "Time",
+       y = "Pressure level") +
+  scale_y_level(name = "Pressure level", breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
+  scale_x_datetime(expand = c(0,0), date_labels = "%HZ \n %b-%d", date_breaks = "12 hours") +
+  theme_minimal(base_size = 16) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
+```{r}
+perfiles %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = Q_diff*1000), 
+                    breaks = seq(-0.0001, 0.0001, 0.00002)*1000) +
+  scale_fill_divergent(name = NULL,
+                       breaks = seq(-0.0001, 0.0001, 0.00002)*1000,
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 25,
+                                                barheight = 0.8)) +
+  geom_vline(xintercept = dates_amsu) +
+  scale_y_level(name = "Pressure level", breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
+  scale_x_datetime(expand = c(0,0), date_labels = "%HZ \n %b-%d", date_breaks = "12 hours") +
+  labs(title = "Specific humidity difference (g/Kg)",
+       subtitle = "RAD - CONV",
+       y = "Pressure level",
+       x = "Time") +
+  theme_minimal(base_size = 16) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
+```{r}
+perfiles  %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = U_diff), breaks = seq(-0.4, 0.4, 0.1)) +
+  scale_fill_divergent(name = NULL,
+                       breaks = seq(-0.4, 0.4, 0.1),
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 25,
+                                                barheight = 0.8)) +
+  geom_vline(xintercept = dates_amsu) +
+  labs(title = "U difference (m/s)",
+       subtitle = "RAD - CONV",
+       x = "Time",
+       y = "Pressure level") +
+  scale_y_level(name = "Pressure level", breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
+  scale_x_datetime(expand = c(0,0), date_labels = "%HZ \n %b-%d", date_breaks = "12 hours") +
+  theme_minimal(base_size = 16) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
+
+```{r}
+perfiles  %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = V_diff), breaks = seq(-0.5, 0.5, 0.2)) +
+  scale_fill_divergent(name = NULL,
+                       breaks = seq(-0.5, 0.5, 0.2),
+                       guide = guide_colorstrip(inside = TRUE,
+                                                barwidth = 25,
+                                                barheight = 0.8)) +
+  geom_vline(xintercept = dates_amsu) +
+  labs(title = "V difference (m/s)",
+       subtitle = "RAD - CONV",
+       x = "Time",
+       y = "Pressure level") +
+  scale_y_level(name = "Pressure level", breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
+  scale_x_datetime(expand = c(0,0), date_labels = "%HZ \n %b-%d", date_breaks = "12 hours") +
+  theme_minimal(base_size = 16) +
+  theme(legend.position = "bottom",
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
+```{r}
+update <- ReadNetCDF("analisis/q_ana_20181123000000_E7.nc", 
+           vars = c(ana = "QVAPOR")) %>% 
+    .[, guess := ReadNetCDF("analisis/q_guess_20181123000000_E7.nc", 
+      vars = c(guess = "QVAPOR"), out = "vector")] %>% 
+   .[coord, on = c("south_north", "west_east")] %>% 
+  .[, update := ana - guess]
+
+
+update[bottom_top %in% seq(1, 13, 3)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = update)) +
+  scale_color_divergent() +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, color = "black", size = 0.2) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~bottom_top, ncol = 5) +
+  labs(x = "Longituted",
+    y = "Latitude", 
+    color = "Humidity update") +
+  theme_minimal(base_size = 16) +
+  theme(panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3),
+        legend.position = "bottom",
+        strip.background = element_blank())
+```
+
+```{r}
+update <- ReadNetCDF("analisis/t_ana_20181123000000_E7.nc", 
+           vars = c(ana = "temp")) %>% 
+    .[, guess := ReadNetCDF("analisis/t_guess_20181123000000_E7.nc", 
+      vars = c(guess = "temp"), out = "vector")] %>% 
+   .[coord, on = c("south_north", "west_east")] %>% 
+  .[, update := ana - guess]
+
+
+update[bottom_top %in% seq(1, 13, 3)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = update)) +
+  scale_color_divergent() +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, color = "black", size = 0.2) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~bottom_top, ncol = 5) +
+  labs(x = "Longituted",
+    y = "Latitude", 
+    color = "Temperature update") +
+  theme_minimal(base_size = 16) +
+  theme(panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3),
+        legend.position = "bottom",
+        strip.background = element_blank())
+```
+
+```{r}
+update <- ReadNetCDF("analisis/u_ana_20181123000000_E7.nc", 
+           vars = c(ana = "uvmet")) %>% 
+    .[, guess := ReadNetCDF("analisis/u_guess_20181123000000_E7.nc", 
+      vars = c(guess = "uvmet"), out = "vector")] %>% 
+   .[coord, on = c("south_north", "west_east")] %>% 
+  .[, update := ana - guess]
+
+
+update[bottom_top %in% seq(1, 39, 3)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = update)) +
+  scale_color_divergent() +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, color = "black", size = 0.2) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~bottom_top, ncol = 5) +
+  labs(x = "Longituted",
+    y = "Latitude", 
+    color = "Temperature update") +
+  theme_minimal(base_size = 16) +
+  theme(panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3),
+        legend.position = "bottom",
+        strip.background = element_blank())
+```
+
+
+```{r eval=FALSE, include=FALSE}
+diag_E4 <- read_diag_mean("analisis/diagfiles/E4/asim_conv_20181123000000", 
+                          variable = c("t", "q", "uv", "p")) %>% 
+  .[, ":="(exp = "CONV")]
+diag_E7 <- read_diag_mean("analisis/diagfiles/E7/asim_conv_20181123000000",
+                          variable = c("t", "q", "uv", "p")) %>% 
+  .[, ":="(exp = "RAD")]
+  
+diag <- rbind(diag_E4, diag_E7)
+
+diag[var != "t" & type %in% c(181, 287), .N, by = .(exp, type, var)] %>% 
+  dcast(type + var ~ exp)
 ```
 
