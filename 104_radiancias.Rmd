@@ -21,6 +21,9 @@ map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uru
 geom_mapa <- function() {
   geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
 }
+
+coord <- ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lon = "XLONG")) %>%
+  .[, lat := ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lat = "XLAT"))$lat]
 ```
 
 ## GOES 16
@@ -961,9 +964,6 @@ diff_q_spd %>%
 fcsts <- expand_grid(fcsts = c("20181122000000", "20181122060000"),
                      exp = c("E4", "E7"))
 
-coord <- ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lon = "XLONG")) %>%
-  .[, lat := ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lat = "XLAT"))$lat]
-
 t <- lapply(seq_len(nrow(fcsts)), function(f) {
   
   tmp <- ReadNetCDF(paste0("analisis/u_", fcsts[f, 1], "_", fcsts[f, 2], ".nc"), vars = c(u = "uvmet")) %>% 
@@ -1294,6 +1294,78 @@ update[bottom_top %in% seq(1, 39, 3)] %>%
         legend.position = "bottom",
         strip.background = element_blank())
 ```
+
+### Flags de control de calidad
+
+Ejemplo de códigos para AMSU-A
+
+* igood_qc=0 --> asimila
+* ifail_satinfo_qc=1 --> no se asimila según satinfo
+* ifail_crtm_qc=2 --> CRTM rechaza esta obs
+* ifail_gross_qc=3 --> gross check, revisa si la inovación es muy grande
+* ifail_interchan_qc=4 --> falla dominó, si falla un obs en un canal, falla en todos
+* ifail_surface_qc=5 --> rechazada porque no se usan estas obs sobre x tipo de superficie
+* ifail_gross_routine_qc=6 
+* ifail_cloud_qc=7 --> rechaza por nube, cambia según el sensor
+* ifail_emiss_qc=8 --> para algunos sensores revisa emisividad
+* ifail_factch6_qc=50 --> 
+* ifail_factch4_qc=51 --> 
+* ifail_sval_qc=52 --> 
+* ifail_factch5_qc=53 --> 
+
+
+```{r}
+diag[, .N, by = .(sensor, date, sign(qc))] %>% 
+  .[sensor != "airs_aqua"] %>% 
+  ggplot(aes(date, N)) +
+  geom_point(aes(color = sensor)) +
+  geom_line(aes(color = sensor)) +
+  scale_color_viridis_d() +
+  facet_wrap(~sign, labeller = labeller(sign = c("-1" = "no use by satinfo",
+                                        "0" = "for use after QC",
+                                        "1" = "not use after QC"))) +
+  theme_minimal()
+
+
+diag[, .N, by = .(qc, date)] %>% 
+  .[qc >= 0] %>% 
+  ggplot(aes(date, N)) +
+  geom_point(aes(color = factor(qc))) +
+  geom_line(aes(color = factor(qc), group = factor(qc))) +
+  scale_color_viridis_d(name = "QC flag") +
+  scale_shape_discrete(guide = NULL) +
+  labs(title = "Todos las observaciones") +
+  theme_minimal()
+
+diag[sensor == "amsua_n15", .N, by = .(qc, date)] %>% 
+  ggplot(aes(date, N)) +
+  geom_point(aes(color = factor(qc))) +
+  geom_line(aes(color = factor(qc), linetype = factor(sign(qc)), 
+                group = factor(qc))) +
+  scale_color_viridis_d(name = "QC flag") +
+  scale_linetype_manual(name = "Sign satinfo", values = c(2, 1, 3)) +
+  scale_shape_discrete(guide = NULL) +
+  labs(title = "AMSU-A") +
+  theme_minimal()
+
+diag[sensor == "amsua_n15" & channel == 2] %>% 
+  .[, date := factor(date)] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = factor(qc))) +
+  geom_sf(data = map, inherit.aes = FALSE, fill = NA, color = "black", size = 0.2) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  facet_wrap(~date) +
+  theme_minimal()
+
+diag[sensor == "amsua_n15", .N, by = .(channel, qc)] %>% 
+  ggplot(aes(factor(channel), factor(qc))) +
+  geom_raster(aes(fill = N)) +
+  scale_fill_viridis_c() +
+  labs(x = "Channel",
+       y = "QC") +
+  theme_minimal()
+```
+
 
 
 ```{r eval=FALSE, include=FALSE}
