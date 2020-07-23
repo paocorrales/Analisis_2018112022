@@ -81,6 +81,16 @@ diag[channel %in% c(1:5, 15)] %>%
        subtitle = "Ubicación de observaciones extras en allsky") +
   theme_minimal()
   
+
+diag[channel %in% c(1:5, 15) & exp == "allsky" ] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = factor(qc))) +
+  scale_color_viridis_d() +
+   geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  facet_wrap(~channel)
+  
+
 ```
 
 ```{r}
