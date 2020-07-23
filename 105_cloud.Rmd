@@ -1,0 +1,162 @@
+---
+title: "105_clouds"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(metR)
+library(data.table)
+library(lubridate)
+library(scattermore)
+library(patchwork)
+source("help_functions.R")
+source("postprocesamiento.R")
+source("goes_functions.R")
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+
+geom_mapa <- function() {
+  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+}
+
+coord <- ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lon = "XLONG")) %>%
+  .[, lat := ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lat = "XLAT"))$lat]
+```
+
+
+```{r}
+
+files <- list.files("analisis/radianzas", pattern = "amsua_n15", full.names = TRUE) %>%
+  .[!str_detect(., "conv")]
+diag <- map(files, function(f){
+  meta <- unglue::unglue(f, "analisis/radianzas/asim_{sensor}_{plat}_{date}.ensmean_{exp}")
+  # print(f)
+  out <- fread(f)
+  # .[V10 == 1] %>% 
+  
+  if (file.size(f) != 0) {
+    out[, date := ymd_hms(meta[[1]][["date"]])] %>% 
+      .[, exp := meta[[1]][["exp"]]]
+  }
+  out
+}) %>%
+  rbindlist()
+
+colnames(diag) <- c("sensor", "channel", "lat", "lon", "press", "dhr", "tb_obs", "tbc", "tbcnob",
+                    "errinv", "qc", "emis", "tlapchn", "rzen", "razi", "rlnd", "rice", "rsnw", "rcld", 
+                    "rcldp", paste0("pred", seq(8)), "date", "exp")
+```
+
+```{r}
+
+diag[qc == 0, .N, by = .(channel, exp)] %>% 
+  ggplot(aes(factor(channel), exp)) +
+  geom_raster(aes(fill = N)) +
+  scale_fill_viridis_c() +
+  labs(x = "channel", y = "", subtitle = "QC = 0") +
+  theme_minimal()
+
+
+diag[qc == 0, .N, by = .(channel, exp)] %>% 
+  dcast(channel ~ exp) %>% 
+  knitr::kable()
+
+```
+
+```{r}
+diag[channel %in% c(1:5, 15)] %>% 
+  dcast(lon + lat + channel ~ exp, value.var = "qc") %>% 
+  .[, diff := allsky - clearsky] %>% 
+  .[diff != 0] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(color = "darkorange", size = 0.7) +
+  # scale_color_viridis_c() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  facet_grid(.~ channel) +
+  labs(x = "lon",
+       subtitle = "Ubicación de observaciones extras en allsky") +
+  theme_minimal()
+  
+```
+
+```{r}
+
+files <- list.files("analisis/radianzas", pattern = "analysis", full.names = TRUE) %>% 
+    .[!str_detect(., "asim")]
+
+update <- map(files, function(f) {
+
+  descriptores <- unglue::unglue(f, c("analisis/radianzas/analysis.ensmean_{exp}"))
+
+  ana <- ReadNetCDF(f, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 
+                                 lon = "XLONG", lat = "XLAT")) %>%
+    .[, p := p + PB] %>%
+    .[, t := tk(t, p)] %>%
+    .[, rh := rh(qv, p, t)] %>% 
+    .[, td := td(qv, p) + 273.15] %>% 
+    .[, ":="(Time = NULL,
+             # west_east = NULL,
+             # south_north = NULL,
+             qv = NULL,
+             PB = NULL)] %>% 
+    .[, c("u", "v") := uvmet(f)] %>% 
+    .[, ":="(exp = descriptores[[1]][["exp"]])] %>% 
+    .[]
+
+}) %>% 
+  rbindlist()
+
+  guess <- ReadNetCDF("analisis/radianzas/wrfarw.ensmean", 
+                      vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 
+                                 lon = "XLONG", lat = "XLAT")) %>%
+    .[, p := p + PB] %>%
+    .[, t := tk(t, p)] %>%
+    .[, rh := rh(qv, p, t)] %>% 
+    .[, td := td(qv, p) + 273.15] %>% 
+    .[, ":="(Time = NULL,
+             # west_east = NULL,
+             # south_north = NULL,
+             qv = NULL,
+             PB = NULL)] %>% 
+    .[, c("u", "v") := uvmet("analisis/radianzas/wrfarw.ensmean")] %>% 
+    # .[, ":="(exp = "guess")] %>% 
+    .[]
+
+  
+update <- guess[update, on = c("lon", "lat", "bottom_top", "south_north", "west_east")]
+  
+```
+
+```{r}
+update[, .(mean_ana = mean(i.t, na.rm = TRUE),
+              mean_guess = mean(t, na.rm = TRUE)), by = .(bottom_top, west_east, exp)] %>% 
+  ggplot(aes(west_east, bottom_top)) +
+  geom_contour_fill(aes(z = (mean_ana - mean_guess))) +
+  scale_fill_divergent() +
+  labs(fill = "update T") +
+  facet_wrap(~ exp) +
+  theme_minimal()
+
+update[, .(mean_ana = mean(i.t, na.rm = TRUE),
+              mean_guess = mean(t, na.rm = TRUE)), by = .(bottom_top, south_north, exp)] %>% 
+  ggplot(aes(south_north, bottom_top)) +
+  geom_contour_fill(aes(z = (mean_ana - mean_guess))) +
+  scale_fill_divergent() +
+  labs(fill = "update T") +
+  facet_wrap(~ exp) +
+  theme_minimal()
+```
+
+
+```{r}
+update %>% 
+  dcast(bottom_top + south_north + west_east ~ exp, value.var = "i.t") %>% 
+  .[, diff := allsky - clearsky] %>% 
+  .[diff != 0]
+
+```
+
