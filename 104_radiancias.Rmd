@@ -304,7 +304,7 @@ cp ${OBS_ROOT}/gdas1.t12z.abias_pc ./satbias_pc_in
 
 - satbias_in: the input coefficients of bias correction for satellite radiance observations.
 - satbias_out: the output coefficients of bias correction for satellite radiance observations
-after the GSI run.
+after the GSI run.m 
 - satbias_pc: the input coefficients of bias correction for passive satellite radiance observations
 - satbias_pc.out
 
@@ -699,7 +699,7 @@ diag_nc <- map(files, function(f) {
     .$vars %>% 
     names()
   
-  diag <- ReadNetCDF(f, vars = var_names[c(10, 12, 13, 55:79)]) %>% 
+  diag <- ReadNetCDF(f, vars = var_names[c(10, 12, 13, 14, 55:79)]) %>% 
     .[, file := f]
 }) %>% 
   rbindlist()
