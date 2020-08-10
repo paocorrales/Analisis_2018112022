@@ -211,9 +211,12 @@ update <- guess[update, on = c("lon", "lat", "bottom_top", "south_north", "west_
   
 ```
 
+## Comparación de update para QC4
+
 ```{r}
 update[, .(mean_ana = mean(i.t, na.rm = TRUE),
               mean_guess = mean(t, na.rm = TRUE)), by = .(bottom_top, west_east, exp)] %>% 
+  .[exp %in% c("QC4new", "QC4old")] %>% 
   ggplot(aes(west_east, bottom_top)) +
   geom_contour_fill(aes(z = (mean_ana - mean_guess))) +
   scale_fill_divergent() +
@@ -223,6 +226,7 @@ update[, .(mean_ana = mean(i.t, na.rm = TRUE),
 
 update[, .(mean_ana = mean(i.t, na.rm = TRUE),
               mean_guess = mean(t, na.rm = TRUE)), by = .(bottom_top, south_north, exp)] %>% 
+    .[exp %in% c("QC4new", "QC4old")] %>% 
   ggplot(aes(south_north, bottom_top)) +
   geom_contour_fill(aes(z = (mean_ana - mean_guess))) +
   scale_fill_divergent() +
@@ -230,13 +234,69 @@ update[, .(mean_ana = mean(i.t, na.rm = TRUE),
   facet_wrap(~ exp) +
   theme_minimal()
 ```
-
+La diferencia entre ambas pruebas para la temperatura es en promedio del ordende 10-3 o 10-4 y un poco menor en los niveles mas altos. El rango de la diferencia está aproximadamente entre -0.4 y 0.2 K.
 
 ```{r}
 update %>% 
   dcast(bottom_top + south_north + west_east ~ exp, value.var = "i.t") %>% 
-  .[, diff := allsky - QC6ecmwf] %>% 
-  .[diff != 0]
+  .[, .(diff = mean(abs(QC4new - QC4old)),
+        max = max(QC4new - QC4old),
+        min = min(QC4new - QC4old)), by = .(bottom_top)] %>% 
+  melt(measure.vars = c("diff", "max", "min")) %>% 
+  ggplot(aes(value, bottom_top)) +
+  geom_vline(xintercept = 0, color = "darkgray") +
+    geom_path(aes(color = variable)) +
+    scale_color_viridis_d() +
+  labs(y = "sigma level", color = "") +
+  theme_minimal()
 
+```
+
+## Analisis de oservaciones potencialmente asimilables en todo el experimento
+
+- Configuración origianl: clearsky, SI sobre tierra fijo (para amsua)
+
+```{r}
+files <- list.files("analisis/diagfiles/E7", pattern = "asim", full.names = TRUE) %>%
+  .[!str_detect(., "conv")]
+diag <- map(files, function(f){
+  meta <- unglue::unglue(f, "analisis/diagfiles/{exp}/asim_{sensor}_{plat}_{date}.ensmean")
+  # print(f)
+  out <- fread(f)
+  # .[V10 == 1] %>% 
+  
+  if (file.size(f) != 0) {
+    out[, date := ymd_hms(meta[[1]][["date"]])]
+  }
+  out
+}) %>%
+  rbindlist()
+
+colnames(diag) <- c("sensor", "channel", "lat", "lon", "press", "dhr", "tb_obs", "tbc", "tbcnob",
+                    "errinv", "qc", "emis", "tlapchn", "rzen", "razi", "rlnd", "rice", "rsnw", "rcld", 
+                    "rcldp", paste0("pred", seq(8)), "date")
+
+satinfo <- fread("global_satinfo.txt") %>% 
+  setnames(old = c("!sensor/instr/sat", "chan"), new = c("sensor", "channel"))
+
+
+
+```
+
+- hirs se pierden ṕor satinfo, ¿a qué se debe esa desición?
+- Interesante ver que por satinfo se pierde el canal 6 de amsua_n15 pero el canal 5 de amsua_n18
+
+```{r}
+diag[, .N, by = .(sensor, channel, qc)] %>% 
+  satinfo[., on = c("sensor", "channel")] %>% 
+  ggplot(aes(factor(channel), factor(abs(qc)))) +
+  geom_tile(aes(fill = N)) +
+  scale_fill_viridis_c() +
+  geom_point(data = ~.x[iuse != 1], shape = 4, color = "grey10") +
+  # scale_shape_manual(values = c(0, 4)) +
+  facet_wrap(~sensor, scales = "free_x") +
+  labs(x = "channel", y = "QC",
+       caption = "Con 'x' se marcan los canales rechazados por satinfo") +
+  theme_minimal()
 ```
 
