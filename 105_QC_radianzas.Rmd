@@ -300,3 +300,39 @@ diag[, .N, by = .(sensor, channel, qc)] %>%
   theme_minimal()
 ```
 
+```{r}
+diag[errinv != 0, .N, by = .(sensor, channel, qc)] %>% 
+  satinfo[., on = c("sensor", "channel")] %>% 
+  ggplot(aes(factor(channel), factor(abs(qc)))) +
+  geom_tile(aes(fill = N)) +
+  scale_fill_viridis_c() +
+  geom_point(data = ~.x[iuse != 1], shape = 4, color = "grey10") +
+  # scale_shape_manual(values = c(0, 4)) +
+  facet_wrap(~sensor, scales = "free_x") +
+  labs(x = "channel", y = "QC",
+       subtitle = "# observaciones que cumplen todos los criterios",
+       caption = "Con 'x' se marcan los canales rechazados por satinfo") +
+  theme_minimal()
+```
+```{r}
+diag[sensor %in% c("amsua_aqua", "amsua_n15", "amsua_n18") & qc == 0 & errinv != 0] %>% 
+  .[press < 1200] %>% 
+  ggplot(aes(press)) +
+  geom_density(aes(color = factor(channel), group = factor(channel))) +
+  facet_grid(channel~sensor, scales = "free")
+```
+
+
+### Sensores no incluidos en este experimento
+
+- **ATMS:** no había identificado que los datos de este sensor están disponibles, a partir de ahora deberían ser asimilados. Satinfo solo rechaza el canal 15. https://www.wmo-sat.info/oscar/instruments/view/53
+- **CRIS:** Entiendo que está sobre NOAA20 junto con el ATMS. Tenemos guardados datos de este sensor y aparece mencionado en el satinfo. Hay que revisar que nombre toma y si el código está preparado. https://www.wmo-sat.info/oscar/instruments/view/93
+- **MHS y HIRS3 from EARS:** no tengo idea si son distintos que MHS y HIRS3 procesado por NCEP
+
+### Sensores incluidos en el experimento
+
+- **AMSU-A:** El sensor está sobre metop-a, n15, n18 y aqua. En cada plataforma los criterios de rechazo son distintos y seguramente tienen que ver con la historia particular del sensor, no cambiaría eso. Pero se puede modificar la manera que el QC calcula el SI sobre tierra y mar. 
+- **HIRS:** Satinfo rechaza todos los canales de este sensor para todas las plataformas. Sin embargo algunos trabajos indican que la asimilación de estas observaciones tiene un impacto positivo sobre el pronóstico. El satinfo regional no rechaza todo.
+- **IASI:** 
+- **MHS:**
+- **AIRS:**
