@@ -146,6 +146,28 @@ obs <- purrr::map(files, function(f) {
 }
 
 
+read_diag_mean_rad <- function(file_list) {
+  
+  diag <- purrr::map(file_list, function(f){
+    meta <- unglue::unglue(basename(f), "asim_{sensor}_{plat}_{date}.ensmean")
+    # print(f)
+    out <- fread(f)
+    # .[V10 == 1] %>% 
+    
+    if (file.size(f) != 0) {
+      out[, date := ymd_hms(meta[[1]][["date"]])]
+    }
+    out
+  }) %>%
+    rbindlist()
+  
+  colnames(diag) <- c("sensor", "channel", "freq", "lat", "lon", "press", "elev_sup", "dhr", "tb_obs", "tbc", "tbcnob",
+                      "errinv", "qc", "emis", "tlapchn", "rzen", "razi", "rlnd", "rice", "rsnw", "rcld", 
+                      "rcldp", paste0("pred", seq(8)), "date")
+  return(diag)
+}
+
+
 # read satbias ------------------------------------------------------------
 
 read_satbias <- function(file) {
