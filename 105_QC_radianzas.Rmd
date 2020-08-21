@@ -279,8 +279,6 @@ colnames(diag) <- c("sensor", "channel", "lat", "lon", "press", "dhr", "tb_obs",
 satinfo <- fread("global_satinfo.txt") %>% 
   setnames(old = c("!sensor/instr/sat", "chan"), new = c("sensor", "channel"))
 
-
-
 ```
 
 - hirs se pierden ṕor satinfo, ¿a qué se debe esa desición?
@@ -314,13 +312,32 @@ diag[errinv != 0, .N, by = .(sensor, channel, qc)] %>%
        caption = "Con 'x' se marcan los canales rechazados por satinfo") +
   theme_minimal()
 ```
+
+
+### Distribución espacial de QC
+
+
 ```{r}
-diag[sensor %in% c("amsua_aqua", "amsua_n15", "amsua_n18") & qc == 0 & errinv != 0] %>% 
-  .[press < 1200] %>% 
-  ggplot(aes(press)) +
-  geom_density(aes(color = factor(channel), group = factor(channel))) +
-  facet_grid(channel~sensor, scales = "free")
+pasadas <- diag[!(sensor %like% c("airs")), c("sensor", "date")] %>% 
+  .[!(sensor %like% c("iasi"))] %>% 
+  unique(by = c("sensor", "date"))
+
+purrr::walk2(pasadas$sensor, pasadas$date, .f = function(this_sensor, this_date) {
+  # browser()
+  diag[sensor ==  this_sensor & date == this_date] %>% 
+    ggplot(aes(ConvertLongitude(lon), lat)) +
+    geom_point(aes(color = factor(abs(qc)))) +
+    scale_color_viridis_d() +
+    geom_mapa() +
+    coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+    facet_wrap(~channel, ncol = 5) +
+    theme_minimal()
+  ggsave(paste0(this_sensor, "_", as.character(this_date), ".png"))
+})
+
+
 ```
+
 
 
 ### Sensores no incluidos en este experimento
@@ -336,3 +353,20 @@ diag[sensor %in% c("amsua_aqua", "amsua_n15", "amsua_n18") & qc == 0 & errinv !=
 - **IASI:** 
 - **MHS:**
 - **AIRS:**
+
+
+```{r}
+diag <- read_diag_mean_rad("/home/paola.corrales/datosmunin/asim_amsua_n15_20181123130000.ensmean")
+
+diag[channel %in% c(10:14)] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = press)) +
+  scale_color_viridis_c() +
+     geom_mapa() +
+  coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+  facet_wrap(~channel, ncol = 5) +
+  theme_minimal()
+
+
+```
+
