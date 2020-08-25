@@ -259,22 +259,7 @@ update %>%
 ```{r}
 files <- list.files("analisis/diagfiles/E7", pattern = "asim", full.names = TRUE) %>%
   .[!str_detect(., "conv")]
-diag <- map(files, function(f){
-  meta <- unglue::unglue(f, "analisis/diagfiles/{exp}/asim_{sensor}_{plat}_{date}.ensmean")
-  # print(f)
-  out <- fread(f)
-  # .[V10 == 1] %>% 
-  
-  if (file.size(f) != 0) {
-    out[, date := ymd_hms(meta[[1]][["date"]])]
-  }
-  out
-}) %>%
-  rbindlist()
-
-colnames(diag) <- c("sensor", "channel", "lat", "lon", "press", "dhr", "tb_obs", "tbc", "tbcnob",
-                    "errinv", "qc", "emis", "tlapchn", "rzen", "razi", "rlnd", "rice", "rsnw", "rcld", 
-                    "rcldp", paste0("pred", seq(8)), "date")
+diag <- read_diag_mean_rad(files)
 
 satinfo <- fread("global_satinfo.txt") %>% 
   setnames(old = c("!sensor/instr/sat", "chan"), new = c("sensor", "channel"))
@@ -316,26 +301,86 @@ diag[errinv != 0, .N, by = .(sensor, channel, qc)] %>%
 
 ### Distribución espacial de QC
 
-
+#### "Normales"
 ```{r}
 pasadas <- diag[!(sensor %like% c("airs")), c("sensor", "date")] %>% 
   .[!(sensor %like% c("iasi"))] %>% 
-  unique(by = c("sensor", "date"))
+  unique(by = c("sensor", "date")) %>% 
+  .[(sensor == "amsua_n15" & date == as_datetime("2018-11-23 00:00:00")) |
+      (sensor == "mhs_n19" & date == as_datetime("2018-11-22 22:00:00")) |
+      (sensor == "hirs4_n19" & date == as_datetime("2018-11-22 22:00:00"))]
 
-purrr::walk2(pasadas$sensor, pasadas$date, .f = function(this_sensor, this_date) {
+purrr::map2(pasadas$sensor, pasadas$date, .f = function(this_sensor, this_date) {
   # browser()
-  diag[sensor ==  this_sensor & date == this_date] %>% 
+  diag[sensor ==  this_sensor & date == this_date] %>%
     ggplot(aes(ConvertLongitude(lon), lat)) +
-    geom_point(aes(color = factor(abs(qc)))) +
+    geom_point(aes(color = factor(abs(qc))), size = 0.7) +
     scale_color_viridis_d() +
     geom_mapa() +
     coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
     facet_wrap(~channel, ncol = 5) +
-    theme_minimal()
-  ggsave(paste0(this_sensor, "_", as.character(this_date), ".png"))
+    labs(title = paste0("Sensor ", this_sensor, " - ",this_date),
+         color = "QC") +
+    theme_minimal() 
+  
+  # ggsave(paste0(this_sensor, "_", as.character(this_date), ".png"))
 })
 
 
+```
+
+#### Multiespectrales
+
+En la figura se muestran algunas equivalencias entre canales del AIRS y del IASI.
+
+```{r}
+knitr::include_graphics("fig/IASI-AIRS.png")
+```
+
+
+```{r}
+multi_channels <- tribble(
+  ~description, ~iasi, ~airs,
+  "LW CO2 - upper temp sounding", 107, 89,
+  "LW CO2 - lower temp sounding", 172, 116,
+  "LW - window channels", 200, 124,
+  "Water vapour channels", 339, 185
+) %>% 
+  setDT()
+
+# pasadas <- diag[!(sensor %like% c("airs")), c("sensor", "date")] %>% 
+#   .[(sensor %like% c("iasi"))] %>%
+#   unique(by = c("sensor", "date")) %>%
+#   .[(sensor == "airs_aqua" & date == as_datetime("2018-11-22 18:00:00")) |
+#       (sensor == "iasi_metop-b" & date == as_datetime("2018-11-22 02:00:00"))]
+
+diag_iasi <- read_diag_mean_rad(list("analisis/diagfiles/E7/asim_iasi_metop-b_20181122020000.ensmean")) %>% 
+  .[, wavenumber := 1/(299792458/(freq*10000000))]
+
+  diag_iasi[channel %in%  multi_channels$iasi] %>%
+    ggplot(aes(ConvertLongitude(lon), lat)) +
+    geom_point(aes(color = factor(abs(qc))), size = 0.7) +
+    scale_color_viridis_d() +
+    geom_mapa() +
+    coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+    facet_wrap(~channel, ncol = 5) +
+    labs(title = "Sensor iasi_metop-b - 2018-11-22 02:00:00",
+         color = "QC") +
+    theme_minimal() 
+
+diag_airs <- read_diag_mean_rad(list("analisis/diagfiles/E7/asim_airs_aqua_20181122180000.ensmean")) %>% 
+  .[, wavenumber := 1/(299792458/(freq*10000000))]
+  
+   diag_airs[channel %in%  multi_channels$airs] %>%
+    ggplot(aes(ConvertLongitude(lon), lat)) +
+    geom_point(aes(color = factor(abs(qc))), size = 0.7) +
+    scale_color_viridis_d() +
+    geom_mapa() +
+    coord_sf(xlim = c(-75, -52), ylim = c(-42,-20)) +
+    facet_wrap(~channel, ncol = 5) +
+    labs(title = "Sensor airs_aqua - 2018-11-22 18:00:00",
+         color = "QC") +
+    theme_minimal()  
 ```
 
 
@@ -355,8 +400,8 @@ purrr::walk2(pasadas$sensor, pasadas$date, .f = function(this_sensor, this_date)
 - **AIRS:**
 
 
-```{r}
-diag <- read_diag_mean_rad("/home/paola.corrales/datosmunin/asim_amsua_n15_20181123130000.ensmean")
+```{r eval=FALSE, include=FALSE}
+diag <- read_diag_mean_rad("/analisis/diagfiles/asim_amsua_n15_20181123130000.ensmean")
 
 diag[channel %in% c(10:14)] %>% 
   ggplot(aes(ConvertLongitude(lon), lat)) +
