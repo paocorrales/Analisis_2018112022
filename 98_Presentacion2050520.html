@@ -204,20 +204,11 @@ The highest deviations from 1 occur for AIRCAR (AIREP does not have many observa
 It's interesting to notice the positive bias in low levels for the temperature.
 
 ---
-name: mcape
-
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-7-1.png" width="1008" style="display: block; margin: auto;" /&gt;
-
-???
-So, now we can trust in the ensemble system. Here we can see the maximum CAPE for each experiment (in columns) and to instants in time (rows). I choose these hours to see "the state" of the analysis before initializing the deterministic forecasts. 
-There are important differences between CONV and the rest. The AUT and SATWND experiments are very similar, indicating that the wind observations from satellite motion vectors do not influence the CAPE.
-
----
 name: subdominio
 
 ## Vertical structure 
 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-8-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-7-1.png" width="504" /&gt;
 ???
 To observe the impact of assimilating each source of observations on the vertical structure, I averaged the vertical profiles of T, q, and wind over the green domain.
 
@@ -225,10 +216,10 @@ To observe the impact of assimilating each source of observations on the vertica
 name: temp
 
 .pull-left[ 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-9-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-8-1.png" width="504" /&gt;
 ]
 .pull-right[ 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-10-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-9-1.png" width="504" /&gt;
 ]
 ???
 So, here we have the difference between the experiments for the temperature over time. The major differences occur between AUT and CONV (notice the change in the scales) at low levels because the observations assimilated in upper levels are the same for both experiments. There is a systematic bias in low levels and I yet have to figure out what it's happening in upper levels at 18UTC on Nov 22th. 
@@ -237,13 +228,13 @@ So, here we have the difference between the experiments for the temperature over
 name: hum
 
 .pull-left[ 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-11-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-10-1.png" width="504" /&gt;
 
 ]
 
 .pull-right[ 
 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-12-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-11-1.png" width="504" /&gt;
 ]
 ???
 It similar for the specific humidity, the major difference it seen between AUT and CONV. In this case, we have a positive bias with a daily cycle.
@@ -252,11 +243,11 @@ It similar for the specific humidity, the major difference it seen between AUT a
 name: u-v
 .pull-left[ 
 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-13-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-12-1.png" width="504" /&gt;
 ]
 
 .pull-right[ 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-14-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-13-1.png" width="504" /&gt;
 ]
 ???
 For the zonal wind we can see a big impact in low levels if we compere AUT with CONV. What it's interesting is the impact in upper level when we compare SATWND with AUT. In this case the impact is important in upper levels between 500 and 200 hPa. 
@@ -265,11 +256,11 @@ For the zonal wind we can see a big impact in low levels if we compere AUT with 
 name: v
 .pull-left[ 
 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-15-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-14-1.png" width="504" /&gt;
 ]
 
 .pull-right[ 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-16-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-15-1.png" width="504" /&gt;
 ]
 
 ???
@@ -281,18 +272,18 @@ exclude: true
 
 .pull-left[ 
 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-17-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-16-1.png" width="504" /&gt;
 ]
 
 .pull-right[ 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-18-1.png" width="504" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-17-1.png" width="504" /&gt;
 ]
 ???
 And here we have the magnitude of the wind. 
 ---
 name: hum-field
 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-19-1.png" width="1008" style="display: block; margin: auto;" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-18-1.png" width="1008" style="display: block; margin: auto;" /&gt;
 
 ???
 Next, I wanted to show you some humidity and wind fields at low levels at the same time we saw the maximum CAPE. At first sight, the difference between CONV and the other experiments is important. But we can't see much here. 
@@ -300,11 +291,22 @@ Next, I wanted to show you some humidity and wind fields at low levels at the sa
 ---
 name: hum-diff
 
-&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-20-1.png" width="1008" style="display: block; margin: auto;" /&gt;
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-19-1.png" width="1008" style="display: block; margin: auto;" /&gt;
 ???
 So here is the difference between the experiments. Because we put the focus at low levels, we don't see major differences between SATWND and AUT compere with AUT-CONV. On the right, we can see that the new observations from the automatical stations generates a much more humid environment in almost all the domain and this difference is maintained during the development of convection. But it has an inverse impact on the wind. The AUT analysis shows weaker northerly wind. 
 
 It's also shown that the position of the cold front is affected by the analysis of the different observations.
+
+---
+name: mcape
+
+&lt;img src="98_Presentacion2050520_files/figure-html/unnamed-chunk-20-1.png" width="1008" style="display: block; margin: auto;" /&gt;
+
+???
+Here we can see the maximum CAPE for each experiment (in columns) and to instants in time (rows). I choose these hours to see "the state" of the analysis before initializing the deterministic forecasts. 
+There are important differences between CONV and the rest. The AUT and SATWND experiments are very similar, indicating that the wind observations from satellite motion vectors do not influence the CAPE.
+
+
 
 ---
 class: inverse, center, middle

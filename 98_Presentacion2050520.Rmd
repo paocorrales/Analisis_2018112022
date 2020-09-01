@@ -33,6 +33,11 @@ map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uru
 geom_mapa <- function() {
   geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
 }
+
+coord <- ReadNetCDF("analisis/dbz/maxdbz_ana_E3_20181120180000.nc", 
+                    vars = c(lon = "XLONG")) %>% 
+  .[, lat := ReadNetCDF("analisis/dbz/maxdbz_ana_E3_20181120180000.nc", 
+                        vars = c(lat = "XLAT"))$lat]
 ```
 
 class: inverse
@@ -386,77 +391,6 @@ And here we have the profiles of the mean and standard deviation of RCRV calcula
 The highest deviations from 1 occur for AIRCAR (AIREP does not have many observations). The observations from soundings show values near 1 and the same happens for the AMDAS observations. 
 
 It's interesting to notice the positive bias in low levels for the temperature.
-
----
-name: mcape
-
-```{r echo=FALSE, warning=FALSE, fig.align="center", fig.height=9, fig.width=14}
-files <- list.files("analisis/mucape", full.names = TRUE) 
-files <- files[-grep("E3", files)]
-
-cape <- lapply(files, function(file) {
-  details <- unglue::unglue(file, "analisis/mucape/mcape_ana_{exp}_{date}.nc")[[1]]
-  
-  ReadNetCDF(file, vars = c(value = "cape_2d")) %>% 
-    .[, `:=`(exp = details$exp, 
-             date = lubridate::ymd_hms(details$date))] %>%
-    setnames(old = "mcape_mcin_lcl_lfc", new = "variable") %>% 
-    .[]
-}) %>% 
-  rbindlist() %>% 
-  .[variable %in% c("mcape", "mcin")] %>% 
-  .[!is.finite(value), value := 0] 
-
-coord <- ReadNetCDF(files[1], vars = c(lon = "XLONG")) %>% 
-  .[, lat := ReadNetCDF(files[1], vars = c(lat = "XLAT"))$lat]
-
-interpol <- function(x, y, z, ...) {
-  IL <- interp::interp(x, y, z, ...)
-  CJ(y = IL$y, x = IL$x)[, z := c(IL$z)] 
-}
-
-cape[date %in% ymd_h(c("2018-11-22 00",
-                       #"2018-11-22 03", 
-                       "2018-11-22 06"))] %>% 
-  .[coord, on = .NATURAL] %>% 
-  .[, interpol(lon, lat, value, nx = 50, ny = 50), by = .(date, exp, variable)] %>% 
-  setnames(c("x", "y", "z"), c("lon", "lat", "value")) %>%
-  dcast(lat + lon + exp + date ~ variable) %>% 
-  na.omit() %>% 
-  .[, date := factor(date)] %>% 
-  ggplot(aes(lon, lat)) +
-  geom_contour_fill(aes(z = round(mcape, 6)), na.fill = 0) +
-  # geom_contour2(data = function(d) dcast(d, lat + lon + date ~ exp, value.var = "value")[, dif := E3 - E4],
-  #   aes(z = dif), bins = 5)+
-  scale_fill_distiller(name = "MCAPE", palette = "YlOrRd", direction = 1, 
-                       # breaks = seq(500, 5000, 500),
-                       guide = guide_colorstrip(barwidth = 30,
-                                                barheight = 0.8)) +
-  ggnewscale::new_scale_fill() +
-  scale_color_viridis_d() +
-  geom_contour_filled(aes(z = mcin), alpha = 0.1, breaks = c(100, 3000), fill = "black") +
-  # geom_contour(aes(z = mcin), na.fill = 0, size = 0.5, color = "blue",
-  #              breaks = c(100, 500)) +
-  geom_mapa() +
-  
-  scale_x_continuous(expand = c(0, 0)) +
-  scale_y_continuous(expand = c(0, 0)) +
-  facet_grid(date ~ exp, 
-             labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
-  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
-  labs(fill = "",
-       x = "Longitude",
-       y = "Latitude",
-       caption = "MCAPE in colors, MCIN over 100 J/kg on darker areas") +
-  theme_minimal(base_size = 16) +
-  theme(legend.position = "bottom", 
-        panel.ontop = TRUE,
-        panel.grid = element_line(linetype = 3))
-```
-
-???
-So, now we can trust in the ensemble system. Here we can see the maximum CAPE for each experiment (in columns) and to instants in time (rows). I choose these hours to see "the state" of the analysis before initializing the deterministic forecasts. 
-There are important differences between CONV and the rest. The AUT and SATWND experiments are very similar, indicating that the wind observations from satellite motion vectors do not influence the CAPE.
 
 ---
 name: subdominio
@@ -881,6 +815,79 @@ diff_q_spd %>%
 So here is the difference between the experiments. Because we put the focus at low levels, we don't see major differences between SATWND and AUT compere with AUT-CONV. On the right, we can see that the new observations from the automatical stations generates a much more humid environment in almost all the domain and this difference is maintained during the development of convection. But it has an inverse impact on the wind. The AUT analysis shows weaker northerly wind. 
 
 It's also shown that the position of the cold front is affected by the analysis of the different observations.
+
+---
+name: mcape
+
+```{r echo=FALSE, warning=FALSE, fig.align="center", fig.height=9, fig.width=14}
+files <- list.files("analisis/mucape", full.names = TRUE) 
+files <- files[-grep("E3", files)]
+
+cape <- lapply(files, function(file) {
+  details <- unglue::unglue(file, "analisis/mucape/mcape_ana_{exp}_{date}.nc")[[1]]
+  
+  ReadNetCDF(file, vars = c(value = "cape_2d")) %>% 
+    .[, `:=`(exp = details$exp, 
+             date = lubridate::ymd_hms(details$date))] %>%
+    setnames(old = "mcape_mcin_lcl_lfc", new = "variable") %>% 
+    .[]
+}) %>% 
+  rbindlist() %>% 
+  .[variable %in% c("mcape", "mcin")] %>% 
+  .[!is.finite(value), value := 0] 
+
+coord <- ReadNetCDF(files[1], vars = c(lon = "XLONG")) %>% 
+  .[, lat := ReadNetCDF(files[1], vars = c(lat = "XLAT"))$lat]
+
+interpol <- function(x, y, z, ...) {
+  IL <- interp::interp(x, y, z, ...)
+  CJ(y = IL$y, x = IL$x)[, z := c(IL$z)] 
+}
+
+cape[date %in% ymd_h(c("2018-11-22 00",
+                       #"2018-11-22 03", 
+                       "2018-11-22 06"))] %>% 
+  .[coord, on = .NATURAL] %>% 
+  .[, interpol(lon, lat, value, nx = 50, ny = 50), by = .(date, exp, variable)] %>% 
+  setnames(c("x", "y", "z"), c("lon", "lat", "value")) %>%
+  dcast(lat + lon + exp + date ~ variable) %>% 
+  na.omit() %>% 
+  .[, date := factor(date)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_contour_fill(aes(z = round(mcape, 6)), na.fill = 0) +
+  # geom_contour2(data = function(d) dcast(d, lat + lon + date ~ exp, value.var = "value")[, dif := E3 - E4],
+  #   aes(z = dif), bins = 5)+
+  scale_fill_distiller(name = "MCAPE", palette = "YlOrRd", direction = 1, 
+                       # breaks = seq(500, 5000, 500),
+                       guide = guide_colorstrip(barwidth = 30,
+                                                barheight = 0.8)) +
+  ggnewscale::new_scale_fill() +
+  scale_color_viridis_d() +
+  geom_contour_filled(aes(z = mcin), alpha = 0.1, breaks = c(100, 3000), fill = "black") +
+  # geom_contour(aes(z = mcin), na.fill = 0, size = 0.5, color = "blue",
+  #              breaks = c(100, 500)) +
+  geom_mapa() +
+  
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_grid(date ~ exp, 
+             labeller = labeller(exp = c(E4 = "CONV", E5 = "AUT", E6 = "SATWND"))) +
+  coord_sf(xlim = range(coord$lon), ylim = range(coord$lat)) +
+  labs(fill = "",
+       x = "Longitude",
+       y = "Latitude",
+       caption = "MCAPE in colors, MCIN over 100 J/kg on darker areas") +
+  theme_minimal(base_size = 16) +
+  theme(legend.position = "bottom", 
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3))
+```
+
+???
+Here we can see the maximum CAPE for each experiment (in columns) and to instants in time (rows). I choose these hours to see "the state" of the analysis before initializing the deterministic forecasts. 
+There are important differences between CONV and the rest. The AUT and SATWND experiments are very similar, indicating that the wind observations from satellite motion vectors do not influence the CAPE.
+
+
 
 ---
 class: inverse, center, middle
