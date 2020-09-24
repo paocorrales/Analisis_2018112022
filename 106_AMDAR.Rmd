@@ -32,26 +32,74 @@ read_amdar <- function(list_files) {
       mutate(fecha = ymd_hm(date_time[[1]][["date"]])) %>% 
       separate(V8, into = c("viento", "matricula"), sep = "=") %>% 
       separate(viento, into = c("dir", "spd"), sep = "/", convert = TRUE) %>% 
-      mutate(spd = as.numeric(spd)*0.514444) %>% 
+      mutate(spd = as.numeric(spd)*0.514444,
+             dir = as.numeric(dir)) %>% 
       separate(V3, into = c("lat", "tmp_lat"), sep = -1, convert = TRUE) %>% 
-      mutate(lat = if_else(tmp_lat == "S", -lat/100, lat/100),
+      mutate(lat = if_else(tmp_lat == "S", -as.numeric(lat)/100, as.numeric(lat)/100),
              tmp_lat = NULL) %>% 
       separate(V4, into = c("lon", "tmp_lon"), sep = -1, convert = TRUE) %>%
-      mutate(lon = if_else(tmp_lon == "W", -lon/100, lon/100),
+      mutate(lon = if_else(tmp_lon == "W", -as.numeric(lon)/100, as.numeric(lon)/100),
              tmp_lon = NULL) %>% 
       separate(V7, into = c("tmp_temp", "temp"), sep = 2, convert = TRUE) %>%
-      mutate(temp = if_else(tmp_temp == "MS", -temp, temp),
-             tmp_temp = NULL) %>% 
+      mutate(temp = if_else(tmp_temp == "MS", -as.numeric(temp), as.numeric(temp)),
+             tmp_temp = NULL,
+             temp = temp/100 + 273.15) %>% 
       separate(V6, into = c(NA, "elev"), sep = 1, convert = TRUE) %>% 
-      mutate(elev = elev*100*0.3048) %>% 
-      select(-V5) %>% 
+      mutate(elev = elev*100*0.3048,
+             press = 1013.25*(1 - 0.0000226*elev)^5.2550) %>% 
       rename("ascenso" = "V1", "identificador" = "V2") %>% 
+      select(!starts_with("V")) %>% 
+      na.omit() %>% 
       setDT()
   }) %>% 
     rbindlist()
   
 }
 
-obs <- read_amdar(files)
+obs <- suppressWarnings(read_amdar(files))
+```
+
+```{r}
+obs %>% 
+  ggplot(aes(spd, elev)) +
+  geom_point()
+
+obs %>% 
+  ggplot(aes(temp - 273.15, elev)) +
+  geom_point()
+
+obs %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = temp - 273.15), size = 0.5) +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -45), ylim = c(-51, -23)) +
+  labs(color = "T",
+       x = "", y = "") +
+  theme_minimal() +
+obs %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = elev), size = 0.5) +
+  scale_color_viridis_c() +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -45), ylim = c(-51, -23)) +
+  labs(x = "", y = "") +
+  theme_minimal() 
+
+obs %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = spd), size = 0.5) +
+  scale_color_viridis_c(option = "B") +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -45), ylim = c(-51, -23)) +
+  labs(x = "", y = "") +
+  theme_minimal() +
+obs %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = dir), size = 0.5) +
+  scale_color_viridis_c(option = "A") +
+  geom_mapa() +
+  coord_sf(xlim = c(-75, -45), ylim = c(-51, -23)) +
+  labs(x = "", y = "") +
+  theme_minimal()
 ```
 
