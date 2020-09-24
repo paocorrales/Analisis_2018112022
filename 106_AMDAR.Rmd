@@ -1,0 +1,57 @@
+---
+title: "AMDAR"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(metR)
+library(data.table)
+library(lubridate)
+library(scattermore)
+library(patchwork)
+source("help_functions.R")
+source("postprocesamiento.R")
+source("goes_functions.R")
+```
+
+## Lectura de datos
+
+```{r}
+files <- list.files("analisis/AMDAR/", full.names = TRUE)
+
+read_amdar <- function(list_files) {
+  
+  out <- purrr::map(list_files, function(f) {
+    # print(f)
+    date_time <- unglue::unglue(basename(f), "{identificador}_{date}.txt")
+    
+    obs <- fread(f, sep = " ", header = FALSE) %>%
+      mutate(fecha = ymd_hm(date_time[[1]][["date"]])) %>% 
+      separate(V8, into = c("viento", "matricula"), sep = "=") %>% 
+      separate(viento, into = c("dir", "spd"), sep = "/", convert = TRUE) %>% 
+      mutate(spd = as.numeric(spd)*0.514444) %>% 
+      separate(V3, into = c("lat", "tmp_lat"), sep = -1, convert = TRUE) %>% 
+      mutate(lat = if_else(tmp_lat == "S", -lat/100, lat/100),
+             tmp_lat = NULL) %>% 
+      separate(V4, into = c("lon", "tmp_lon"), sep = -1, convert = TRUE) %>%
+      mutate(lon = if_else(tmp_lon == "W", -lon/100, lon/100),
+             tmp_lon = NULL) %>% 
+      separate(V7, into = c("tmp_temp", "temp"), sep = 2, convert = TRUE) %>%
+      mutate(temp = if_else(tmp_temp == "MS", -temp, temp),
+             tmp_temp = NULL) %>% 
+      separate(V6, into = c(NA, "elev"), sep = 1, convert = TRUE) %>% 
+      mutate(elev = elev*100*0.3048) %>% 
+      select(-V5) %>% 
+      rename("ascenso" = "V1", "identificador" = "V2") %>% 
+      setDT()
+  }) %>% 
+    rbindlist()
+  
+}
+
+obs <- read_amdar(files)
+```
+
