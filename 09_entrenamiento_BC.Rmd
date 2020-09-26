@@ -13,6 +13,7 @@ library(data.table)
 library(lubridate)
 library(scattermore)
 library(patchwork)
+library(unglue)
 source("help_functions.R")
 source("postprocesamiento.R")
 source("goes_functions.R")
@@ -113,23 +114,137 @@ for (this_sensor in sensores){
     theme_minimal() +
     theme(legend.position = "bottom")
   
-   rows <- satbias[sensor %in% this_sensor & iuse == 1, channel] %>% 
+  rows <- satbias[sensor %in% this_sensor & iuse == 1, channel] %>% 
     unique(by = channel) %>% 
     length() / 5
   
   h <- ceiling(ceiling(rows)*700/300)
   if (h > 0){
-  
-  ggsave(paste0(this_sensor, ".png"), plot = g, width = 9, height = h, limitsize = FALSE)
-}
+    
+    ggsave(paste0(this_sensor, ".png"), plot = g, width = 9, height = h, limitsize = FALSE)
+  }
 }
 
 
-  
- 
+
+
+```
+
+## Evaluación del ensamble
+
+```{r}
+# library(foreach)
+# library(doParallel)
+# 
+# myCluster <- makeCluster(10)
+# registerDoParallel(myCluster)
+
+files <- list.files("/home/paola.corrales/datosmunin/EXP/E7/ANA/training/NPP/", 
+                    full.names = TRUE)
+var_nc <- "Q"
+
+# out <- foreach(f = 1:length(files),
+#                .packages = c("data.table", "metR", "lubridate", "dplyr", "unglue"),
+#                .export = c("files", "var_nc"),
+#                .combine = "rbind") %dopar% {
+out <- purrr::map(files, function(f) {
+  print(basename(f))
+                 meta <- unglue(basename(f), "NPP_{date}_AN.nc")
+                 
+                 nc_file <- ReadNetCDF(f, vars = c("XLONG", "XLAT", var_nc),
+                                       subset = list(lat = 5:235, lon = 5:195)) %>% 
+                   .[, .(mean = mean(Q, na.rm = TRUE),
+                         spread = sd(Q, na.rm = TRUE)), by = .(lev)] %>% 
+                   .[, date := ymd_h(meta[[1]][[1]])]
+}) %>% 
+  rbindlist()
+#                }
+# 
+# stopCluster(myCluster)
+
+fwrite(out, paste0("analisis/", var_nc, ".csv"))
+
 ```
 
 ```{r}
-satinfo[iuse == 1, .N, by = .(sensor)]
+fread("analisis/T.csv") %>% 
+  .[, date := ymd_hms(date)] %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = spread), breaks = seq(0, 10, 1)) +
+  scale_fill_viridis_c(option = "A", guide = guide_colorstrip(barheight = 15),
+                       breaks = seq(0, 10, 1), limits = c(0.5, NA)) +
+  scale_y_level() +
+  scale_x_datetime(date_breaks = "1 day", date_labels = "%b-%d") +
+  labs(fill = "SPREAD",
+       title = "Temperatura",
+       x = "") +
+  theme_minimal()
+
+fread("analisis/Q.csv") %>% 
+  .[, date := ymd_hms(date)] %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = spread), breaks = seq(0, 6, 0.5)) +
+  scale_fill_viridis_c(option = "A", guide = guide_colorstrip(barheight = 15),
+                       breaks = seq(0, 5.5, 0.5), limits = c(0, NA)) +
+  scale_y_level() +
+  scale_x_datetime(date_breaks = "1 day", date_labels = "%b-%d") +
+  labs(fill = "SPREAD",
+       title = "Humedad",
+       x = "") +
+  theme_minimal()
+```
+
+```{r}
+files <- list.files("/home/paola.corrales/datosmunin/EXP/E7/ANA/training/", 
+                    pattern = "asim.", recursive = TRUE,
+                    full.names = TRUE)
+
+diag <- purrr::map(files, function(f) {
+  read_diag_mean_rad(f) %>% 
+    .[press > 50 & qc == 0, .N, by = .(sensor, channel, date)]
+  
+}) %>% 
+  rbindlist()
+
+diag[sensor %in% c("iasi_metop-a", "iasi_metop-b", "airs_aqua")] %>% 
+  .[, .(count = sum(N)), by = .(sensor, date)] %>% 
+  ggplot(aes(date, count)) +
+  geom_line(aes(color = sensor)) +
+  geom_point(aes(color = sensor)) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(title = "Multiespectrales",
+       subtitle = "qc == 0") +
+  theme_minimal()
+
+diag[(sensor %in% c("amsua_aqua", "ansua_metop-a", "amsua_n15", "amsua_n18"))] %>% 
+   .[, .(count = sum(N)), by = .(sensor, date)] %>% 
+  ggplot(aes(date, count)) +
+  geom_line(aes(color = sensor)) +
+  geom_point(aes(color = sensor)) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(title = "AMSU - A",
+       subtitle = "qc == 0") +
+  theme_minimal()
+
+diag[(sensor %in% c("hirs4_n19", "hirs4_metop-a","hirs4_metop-b"))] %>% 
+   .[, .(count = sum(N)), by = .(sensor, date)] %>% 
+  ggplot(aes(date, count)) +
+  geom_line(aes(color = sensor)) +
+  geom_point(aes(color = sensor)) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(title = "HIRS 4",
+       subtitle = "qc == 0") +
+  theme_minimal()
+
+diag[(sensor %in% c("mhs_metop-a", "mhs_metop-b", "mhs_n18", "mhs_n19", "mhs_metop-a"))] %>% 
+   .[, .(count = sum(N)), by = .(sensor, date)] %>% 
+  ggplot(aes(date, count)) +
+  geom_line(aes(color = sensor)) +
+  geom_point(aes(color = sensor)) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(title = "MHS",
+       subtitle = "qc == 0") +
+  theme_minimal()
+
 ```
 
