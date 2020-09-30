@@ -21,8 +21,11 @@ source("goes_functions.R")
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
 
 geom_mapa <- function() {
-  geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE)
+  list(geom_sf(data = map, fill = NA, color = "black", size = 0.2, inherit.aes = FALSE),
+    coord_sf(xlim = c(-78, -50), ylim = c(-42, -19)))
 }
+
+map_proj <- "+proj=lcc +lat_1=-30.9659996032715 +lat_2=-30.9659996032715 +lat_0=-30.9660034179688 +lon_0=-63.5670013427734 +a=6370000 +b=6370000"
 
 coord <- ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lon = "XLONG")) %>%
   .[, lat := ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lat = "XLAT"))$lat]
@@ -141,7 +144,7 @@ for (this_sensor in sensores){
 
 files <- list.files("/home/paola.corrales/datosmunin/EXP/E7/ANA/training/NPP/", 
                     full.names = TRUE)
-var_nc <- "Q"
+var_nc <- "T"
 
 # out <- foreach(f = 1:length(files),
 #                .packages = c("data.table", "metR", "lubridate", "dplyr", "unglue"),
@@ -153,8 +156,9 @@ out <- purrr::map(files, function(f) {
                  
                  nc_file <- ReadNetCDF(f, vars = c("XLONG", "XLAT", var_nc),
                                        subset = list(lat = 5:235, lon = 5:195)) %>% 
-                   .[, .(mean = mean(Q, na.rm = TRUE),
-                         spread = sd(Q, na.rm = TRUE)), by = .(lev)] %>% 
+                   .[, .(mean = mean(T, na.rm = TRUE)), by = .(lev, ens)] %>% 
+                   .[, .(mean = mean(mean, na.rm = TRUE),
+                         sd = sd(mean, na.rm = TRUE)), by = .(lev)] %>% 
                    .[, date := ymd_h(meta[[1]][[1]])]
 }) %>% 
   rbindlist()
@@ -170,9 +174,9 @@ fwrite(out, paste0("analisis/", var_nc, ".csv"))
 fread("analisis/T.csv") %>% 
   .[, date := ymd_hms(date)] %>% 
   ggplot(aes(date, lev)) +
-  geom_contour_fill(aes(z = spread), breaks = seq(0, 10, 1)) +
+  geom_contour_fill(aes(z = sd), breaks = seq(0, 0.4, 0.05)) +
   scale_fill_viridis_c(option = "A", guide = guide_colorstrip(barheight = 15),
-                       breaks = seq(0, 10, 1), limits = c(0.5, NA)) +
+                       breaks = seq(0.1, 0.4, 0.05), limits = c(0.1, NA)) +
   scale_y_level() +
   scale_x_datetime(date_breaks = "1 day", date_labels = "%b-%d") +
   labs(fill = "SPREAD",
@@ -183,9 +187,9 @@ fread("analisis/T.csv") %>%
 fread("analisis/Q.csv") %>% 
   .[, date := ymd_hms(date)] %>% 
   ggplot(aes(date, lev)) +
-  geom_contour_fill(aes(z = spread), breaks = seq(0, 6, 0.5)) +
+  geom_contour_fill(aes(z = sd), breaks = seq(0, 0.4, 0.05)) +
   scale_fill_viridis_c(option = "A", guide = guide_colorstrip(barheight = 15),
-                       breaks = seq(0, 5.5, 0.5), limits = c(0, NA)) +
+                       breaks = seq(0, 0.3, 0.05), limits = c(0, NA)) +
   scale_y_level() +
   scale_x_datetime(date_breaks = "1 day", date_labels = "%b-%d") +
   labs(fill = "SPREAD",
@@ -193,6 +197,82 @@ fread("analisis/Q.csv") %>%
        x = "") +
   theme_minimal()
 ```
+```{r}
+fisica <- data.table(ens = 1:60, 
+                     fisica = rep(c("KF-YSU", 
+                                    "BMJ-YSU",
+                                    "GF-YSU",
+                                    "KF-MYJ",
+                                    "BMJ-MYJ",
+                                    "GF-MYJ",
+                                    "KF-MYNN2",
+                                    "BMJ-MYNN2",
+                                    "GF-MYNN2"), length.out = 60)) %>% setDT()
+
+ana <- ReadNetCDF(files[3], vars = c("XLONG", "XLAT", "MDBZ")) %>% 
+  fisica[., on = .NATURAL] %>% 
+    .[, c("x", "y") := wrf_project(XLONG, XLAT)]
+
+ana <- ReadNetCDF("/home/paola.corrales/datosmunin/EXP/E7/ANA/NPP/NPP_2018-11-12_01_AN.nc", vars = c("XLONG", "XLAT", "MDBZ")) %>%
+  fisica[., on = .NATURAL] %>% 
+  .[, c("x", "y") := wrf_project(XLONG, XLAT)]
+
+ana[, .(mean = mean(MDBZ, na.rm = TRUE),
+        sd = sd(MDBZ, na.rm = TRUE)), by = .( XLONG, XLAT)] %>% 
+  ggplot(aes(XLONG, XLAT)) +
+  geom_point(aes(color = sd)) +
+  scale_color_viridis_c(option = "A") +
+  geom_mapa() +
+  # facet_wrap(~lev) +
+  theme_minimal()
+
+
+positive_breaks <- function (binwidth = NULL, bins = 10, exclude = NULL) 
+{
+    function(range, binwidth2) {
+        if (!is.null(binwidth)) 
+            binwidth2 <- binwidth
+        if (is.null(binwidth2)) {
+            b <- pretty(range, bins)
+            b <- b[b > 0]
+            return(b[!(b %in% exclude)])
+        }
+        else {
+            b <- scales::fullseq(range, binwidth2)
+            b <- b[b > 0]
+            b[!(b %in% exclude)]
+        }
+    }
+}
+ana[, .(mean = mean(MDBZ, na.rm = TRUE), 
+        sd = sd(MDBZ, na.rm = TRUE)), by = .(lo, la)] %>% 
+  ggplot(aes(lo, la)) +
+  geom_contour_fill(aes(z = mean), proj = map_proj, 
+                    breaks = positive_breaks()) +
+    geom_mapa() +
+  # geom_point(aes(color = sd)) +
+  scale_fill_viridis_c(option = "A") +
+  # geom_mapa() +
+  # facet_wrap(~lev) +
+  theme_minimal()
+
+ana[, .(MDBZ = mean(MDBZ, na.rm = TRUE)), by = .(fisica, x, y)] %>% 
+# ana %>%
+  # .[MDBZ > 10 & ens == 3] %>% 
+  ggplot(aes(x, y)) +
+  geom_contour_fill(aes(z = MDBZ), proj = map_proj,
+                    breaks = positive_breaks(binwidth = 5)) + 
+  scale_fill_gradientn(colours = rev(Redmonder::redmonder.pal(10, name = "qMSOStd")), 
+                        limits = c(0, 50),
+                       breaks = positive_breaks(binwidth = 5),
+                       guide = guide_colorstrip()) +
+  geom_mapa() +
+  facet_wrap(~fisica, ncol = 5) +
+  theme_minimal()
+```
+
+
+## Diagfiles
 
 ```{r}
 files <- list.files("/home/paola.corrales/datosmunin/EXP/E7/ANA/training/", 
