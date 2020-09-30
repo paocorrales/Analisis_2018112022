@@ -43,7 +43,7 @@ read_amdar <- function(list_files) {
       separate(V7, into = c("tmp_temp", "temp"), sep = 2, convert = TRUE) %>%
       mutate(temp = if_else(tmp_temp == "MS", -as.numeric(temp), as.numeric(temp)),
              tmp_temp = NULL,
-             temp = temp/100 + 273.15) %>% 
+             temp = temp/10 + 273.15) %>% 
       separate(V6, into = c(NA, "elev"), sep = 1, convert = TRUE) %>% 
       mutate(elev = elev*100*0.3048,
              press = 1013.25*(1 - 0.0000226*elev)^5.2550) %>% 
@@ -70,7 +70,8 @@ obs %>%
 
 obs %>% 
   ggplot(aes(lon, lat)) +
-  geom_point(aes(color = temp - 273.15), size = 0.5) +
+  geom_point(aes(color = (temp - 273.15)*10), size = 0.5) +
+  scale_color_divergent() +
   geom_mapa() +
   coord_sf(xlim = c(-75, -45), ylim = c(-51, -23)) +
   labs(color = "T",
