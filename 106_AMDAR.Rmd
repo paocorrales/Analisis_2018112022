@@ -70,10 +70,9 @@ obs %>%
 
 obs %>% 
   ggplot(aes(lon, lat)) +
-  geom_point(aes(color = (temp - 273.15)*10), size = 0.5) +
+  geom_point(aes(color = (temp - 273.15)), size = 0.5) +
   scale_color_divergent() +
   geom_mapa() +
-  coord_sf(xlim = c(-75, -45), ylim = c(-51, -23)) +
   labs(color = "T",
        x = "", y = "") +
   theme_minimal() +
@@ -82,7 +81,6 @@ obs %>%
   geom_point(aes(color = elev), size = 0.5) +
   scale_color_viridis_c() +
   geom_mapa() +
-  coord_sf(xlim = c(-75, -45), ylim = c(-51, -23)) +
   labs(x = "", y = "") +
   theme_minimal() 
 
@@ -91,7 +89,6 @@ obs %>%
   geom_point(aes(color = spd), size = 0.5) +
   scale_color_viridis_c(option = "B") +
   geom_mapa() +
-  coord_sf(xlim = c(-75, -45), ylim = c(-51, -23)) +
   labs(x = "", y = "") +
   theme_minimal() +
 obs %>% 
@@ -99,7 +96,6 @@ obs %>%
   geom_point(aes(color = dir), size = 0.5) +
   scale_color_viridis_c(option = "A") +
   geom_mapa() +
-  coord_sf(xlim = c(-75, -45), ylim = c(-51, -23)) +
   labs(x = "", y = "") +
   theme_minimal()
 ```
