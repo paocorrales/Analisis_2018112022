@@ -158,7 +158,7 @@ read_diag_mean_rad <- function(file_list) {
     } 
     meta <- unglue::unglue(basename(f), "asim_{sensor}_{plat}_{date}.ensmean")
     # print(f)
-    out <- fread(f)
+    out <- fread(f, na.strings = c("0.100000E+12"))
     # .[V10 == 1] %>% 
     
     if (file.size(f) != 0) {
@@ -168,10 +168,14 @@ read_diag_mean_rad <- function(file_list) {
   }) %>%
     rbindlist()
   
+  # if (ncol(diag) == 0) {
+  #   return(NULL)
+  # } 
+
   colnames(diag) <- c("sensor", "channel", "freq", "lat", "lon", "press", "elev_sup", "dhr", "tb_obs", "tbc", "tbcnob",
-                      "errinv", "qc", "emis", "tlapchn", "rzen", "razi", "rlnd", "rice", "rsnw", "rcld", 
+                      "errinv", "qc", "emis", "tlapchn", "rzen", "razi", "rlnd", "rice", "rsnw", "rcld",
                       "rcldp", paste0("pred", seq(8)), "date")
-  return(diag)
+  return(setDT(diag))
 }
 
 
