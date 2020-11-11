@@ -34,14 +34,14 @@ coord <- ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lon = "XLONG")) 
 ## Entrenamiento de coeficientes
 
 ```{r}
-files <- list.files("/home/paola.corrales/datosmunin/EXP/E7/ANA/",
+files <- list.files("/home/paola.corrales/datosmunin/EXP/E7-training/ANA/",
                     pattern = "satbias_2", 
                     recursive = TRUE,
                     full.names = TRUE)
 
 satbias <- map(files, function(f){
   # print(basename(f))
-  meta <- unglue::unglue(f, "/home/paola.corrales/datosmunin/EXP/E7/ANA//{exp}/{date_ana}/satbias_enkf/satbias_{date}")
+  meta <- unglue::unglue(f, "/home/paola.corrales/datosmunin/EXP/E7-training/ANA//{exp}/{date_ana}/satbias_enkf/satbias_{date}")
   read_satbias(f) %>% 
     as.data.table() %>% 
     .[, ":="(date = ymd_hms(meta[[1]][["date"]]),
