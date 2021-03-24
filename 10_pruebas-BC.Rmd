@@ -13,9 +13,7 @@ library(lubridate)
 library(scattermore)
 library(patchwork)
 library(unglue)
-source("help_functions.R")
-source("postprocesamiento.R")
-source("goes_functions.R")
+library(mesoda)
 
 map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
 
@@ -26,11 +24,17 @@ geom_mapa <- function() {
 
 map_proj <- "+proj=lcc +lat_1=-30.9659996032715 +lat_2=-30.9659996032715 +lat_0=-30.9660034179688 +lon_0=-63.5670013427734 +a=6370000 +b=6370000"
 
-coord <- ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lon = "XLONG")) %>%
-  .[, lat := ReadNetCDF("analisis/q_20181121210000_E3.nc", vars = c(lat = "XLAT"))$lat]
+satinfo <- fread("satinfo.txt") %>% 
+  setnames(c("!sensor/instr/sat", "chan"), c("sensor", "channel"))
+
+use_table <- satinfo[, c("sensor", "channel", "iuse")]
+
+multiespectrales <- c("airs_aqua",
+                      "iasi_metop-a",
+                      "iasi_metop-b")
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 files <- list.files("/home/paola.corrales/datosmunin/EXP/prueba_BC",
                     pattern = "satbias_2", 
                     recursive = TRUE,
@@ -79,394 +83,15 @@ satinfo <- fread("satinfo.txt") %>%
 satbias <- satinfo[satbias, on = c("sensor", "channel")]
 
 multiespectrales <- c("airs_aqua",
-              "iasi_metop-a",
-              "iasi_metop-b")
-```
+                      "iasi_metop-a",
+                      "iasi_metop-b")
 
-```{r}
 this_sensor <- sensores[2]
 
 satbias[sensor %in% this_sensor & iuse == 1 & channel == 6] %>% 
-    melt(measure.vars = paste0("coeff", c(1, 3:5, 8))) %>% 
-    ggplot(aes(date, value)) +
-    geom_point(aes(color = variable, shape = exp), size = 2) +
-    geom_path(aes(color = variable, linetype = exp), size= 0.5) +
-    scale_color_brewer(type = "qual", palette = "Dark2",
-                       labels = c("coeff1" = "Offset",
-                                  "coeff3" = "CLW",
-                                  "coeff4" = "TLR^2",
-                                  "coeff5" = "TLR",
-                                  "coeff8" = "Emiss")) +
-    scale_x_datetime(date_labels = "%H", date_breaks = "3 hours") +
-    labs(title = paste("Coefficientes for", this_sensor),
-         color = "") +
-    facet_wrap(~channel, scales = "free_y", ncol = 5) +
-    theme_minimal() +
-    theme(legend.position = "bottom")
-```
-
-```{r}
-files <- list.files("/home/paola.corrales/datosmunin/EXP/E7-training", 
-                    pattern = "asim.", recursive = TRUE, 
-                    full.names = TRUE)
-files <- files[!str_detect(files, pattern = "conv")]
-
-diag_rad <- purrr::map(files, function(f) {
-  f
-  meta <- unglue(f, "/home/paola.corrales/datosmunin/EXP/E7-training/ANA/{exp}/{date_ana}/diagfiles/{file}" )
-  out <- read_diag_mean_rad(f) %>%
-    .[, exp := meta[[1]][["exp"]]] %>% 
-    .[]
-  
-}) %>%
-  rbindlist()
-```
-
-```{r}
-diag_rad[sensor == "mhs_n18" & qc == 0 & errinv != 0, .N, by = .(date, channel, exp)] %>% 
-  .[, date := factor(date)] %>% 
-  ggplot(aes(date, channel)) +
-  geom_tile(aes(fill = N)) +
-  scale_fill_viridis_c(trans = scales::log10_trans()) +
-  facet_wrap(~exp, ncol = 1) +
-  theme(axis.text.x = element_text(angle = 90))
-```
-
-
-```{r}
-diag_rad[sensor == "amsua_n18" & qc == 0, .(mean = mean(tbc, na.rm = TRUE)), by = .(date, channel, exp)] %>% 
-  ggplot(aes(date, mean)) +
-  geom_point(aes(color = factor(channel))) +
-  facet_wrap(~exp)
-  geom_line(aes(color = factor(channel), linetype = exp))
-  
-diag_rad %>% 
-  .[, bias_total := pred1 + pred2 + pred3 + pred4 + pred5 + pred6 + pred7 + pred8] %>% 
-  melt(measure.vars = c("pred1", "pred2", "pred3", "pred4", 
-                        "pred5", "pred6", "pred7", "pred8", "bias_total")) %>% 
-  .[, .(mean_bias = mean(value, na.rm = TRUE)), by = .(variable, date, exp, channel, sensor)] %>% 
-  .[(sensor %in% sensores[13]) & 
-      channel %in% c(1:5) & variable %in% c("pred1", "pred3", "pred4", "pred5", "pred8", "bias_total")] %>% 
-  ggplot(aes(date, mean_bias)) +
-  geom_line(aes(color = variable, linetype = exp)) +
-  geom_point(aes(color = variable, shape = exp)) +
-  scale_color_brewer(type = "qual", palette = "Dark2",
-                     labels = c("pred1" = "Offset",
-                                "pred3" = "CLW",
-                                "pred4" = "TLR^2",
-                                "pred5" = "TLR",
-                                "pred8" = "Emiss")) +
-  scale_linetype_discrete(name = "") +
-  facet_grid(sensor~channel, scales = "free") +
-  labs(color = "", linetype = "",
-       x = "", y = "BIAS predicho") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-```
-
-```{r}
-diag_rad[sensor == "amsua_n18" &  channel == 7] %>% 
-  .[, date := factor(date)] %>% 
-  ggplot(aes(lon, lat)) + 
-  geom_point(aes(color = errinv)) +
-  # geom_point(aes(color = factor(qc))) +
-  facet_grid(exp~date)
-```
-
-
-```{r}
-
-diag_rad[qc == 0 & exp != "week1", .N, by = .(sensor, channel, exp)] %>% 
-   .[!(sensor %in% c(multiespectrales, "atms_npp", "hirs4_metop-b"))] %>% 
-  dcast(sensor + channel ~ exp) %>% 
-  .[, diff_N := varN - var_cte] %>% 
-  .[, win := fifelse(diff_N >= 0, "varN", "var_cte")] %>% 
-  melt(measure.vars = c("varN", "var_cte"), value.name = "N", variable.name = "exp") %>% 
-  ggplot(aes(channel, sensor)) +
-  geom_point(aes(color = N, size = N)) +
-  geom_point(data = ~.x[win == exp], shape = 21, aes(size = N)) +
-  scale_color_viridis_c(direction = -1) +
-  facet_wrap(~exp) +
-  labs(subtitle = "Comparación entre las dos pruebas")
-  
-  
-  
-  .[, win := fifelse(varN > week1, "varN", "week1")] %>% 
-  melt(measure.vars = c("week1", "varN"), variable.name = "exp", value.name = "N")
-
-abs_bias <- diag_rad %>% 
-  .[, pasa_qc := fifelse(qc == 0, "pasa qc", "no pasa qc")] %>% 
-  .[, .(bias_tbc = mean(tbc, na.rm = TRUE),
-        bias_tbcnob = mean(tbcnob, na.rm = TRUE)), 
-    by = .(sensor, channel, exp, pasa_qc)] %>% 
-  .[, abs_bias := abs(bias_tbc) - abs(bias_tbcnob)] %>% 
-  dcast(sensor + channel + exp ~ pasa_qc, value.var = "abs_bias") %>% 
-  setnames(c("no pasa qc", "pasa qc"), c("abs_bias_nqc", "abs_bias_qc"))
- 
-total <- diag_rad %>% 
-  .[, .(bias_tbc = mean(tbc, na.rm = TRUE),
-        bias_tbcnob = mean(tbcnob, na.rm = TRUE)), 
-    by = .(sensor, channel, exp)] %>% 
-  dcast(sensor + channel ~ exp, value.var = "bias_tbc") %>% 
-  .[, abs_bias := abs(varN) - abs(week1)] %>% 
-  melt(measure.vars = c("week1", "varN"), value.name = "bias_tbc", variable.name = "exp") %>% 
-  # .[abs_bias, on = c("sensor", "channel", "exp")] %>% 
-  .[n_obs, on = c("sensor", "channel", "exp")] %>% 
-  satinfo[., on = c("sensor", "channel")]
-
-total[iuse == 1] %>% 
-  .[!(sensor %in% c(multiespectrales, "atms_npp"))] %>% 
- # dcast(sensor + channel + N ~ exp, value.var = "bias_tbc")
-  ggplot(aes(channel, sensor)) +
-  geom_point(aes(color = abs_bias, size = N)) +
-  geom_point(data = ~.x[win == exp], shape = 21, aes(size = N)) +
-  # geom_text(aes(label = round(abs_bias, 1)), size = 2) +
-  # scale_color_viridis_c(trans = scales::log_trans(), breaks = c(0.1, 1, 10, 100),
-  #                       guide = guide_colourbar(barwidth = 7)) +
-  scale_color_divergent(trans = symlog_trans(), breaks = c(-1, 0, 1, 10),
-                        guide = guide_colourbar(barwidth = 7)) +
-  facet_wrap(~exp, labeller = labeller(exp = c("week1" = "pre-RAD1", "varN" = "var/N"))) +
-  labs(subtitle = "all obs",
-       color = "Bias\ndifference",
-       size = NULL) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-```
-
-```{r}
-# diag_rad <- diag_rad[exp != "week1"]
-
-n_obs_week1 <- diag_rad[qc == 0 & exp == "week1", .N, by = .(sensor, channel, exp)] %>% 
-  dcast(sensor + channel ~ exp)
-  # .[, win := fifelse(varN > week1, "varN", "week1")] %>% 
-  # melt(measure.vars = c("week1"), variable.name = "exp", 
-  #      value.name = "N")
-
-bias_week1 <- diag_rad[exp == "week1"] %>% 
-  .[, .(bias_tbc = mean(tbc, na.rm = TRUE),
-        bias_tbcnob = mean(tbcnob, na.rm = TRUE)), 
-    by = .(sensor, channel, exp)] %>% 
-  dcast(sensor + channel ~ exp, value.var = "bias_tbc")  
-
-
-bias <- diag_rad[exp != "week1"] %>% 
-  .[, .(bias_tbc = mean(tbc, na.rm = TRUE),
-        bias_tbcnob = mean(tbcnob, na.rm = TRUE)), 
-    by = .(sensor, channel, exp)] %>% 
-  dcast(sensor + channel ~ exp, value.var = "bias_tbc") %>% 
-  melt(measure.vars = c("varN", "var_cte")) %>% 
-  bias_week1[., on = c("sensor", "channel")] %>% 
-  .[, abs_bias := abs(value) - abs(week1)]
-  # melt(measure.vars = c("week1", "varN"), value.name = "bias_tbc", variable.name = "exp") %>% 
-  # # .[abs_bias, on = c("sensor", "channel", "exp")] %>% 
-  # .[n_obs, on = c("sensor", "channel", "exp")] %>% 
-  # satinfo[., on = c("sensor", "channel")]
-
-
-n_obs <- diag_rad[qc == 0 & exp != "week1", .N, by = .(sensor, channel, exp)] %>% 
-  dcast(sensor + channel ~ exp) %>% 
-  # .[, win := fifelse(varN > week1, "varN", "week1")] %>% 
-  melt(measure.vars = c("varN", "var_cte"), variable.name = "exp", 
-       value.name = "N") %>% 
-  n_obs_week1[., on = c("sensor", "channel")] %>% 
-  .[, diff := N - week1]
-
-n_obs[bias, on = c("sensor", "channel")] %>% 
-  .[!(sensor %in% c(multiespectrales, "atms_npp", "hirs4_metop-b"))] %>% 
-  na.omit() %>% 
-  ggplot(aes(channel, sensor)) +
-  geom_point(aes(size = N, color = abs_bias)) +
-  geom_point(data = ~.x[diff > 0], shape = 21, aes(size = N)) +
-  scale_color_divergent(trans = symlog_trans(), 
-                        guide = guide_colourbar()) +
-  facet_wrap(~exp) +
-  labs(subtitle = "Comparación con análisis original")
-```
-### Está funcionando el experimento?
-
-Convencionales
-
-```{r}
-files <- c(list.files("/home/paola.corrales/datosmunin/EXP/E7", 
-                    pattern = "asim.", recursive = TRUE, 
-                    full.names = TRUE),
-           list.files("/home/paola.corrales/datosmunin/EXP/E7-bis", 
-                    pattern = "asim.", recursive = TRUE, 
-                    full.names = TRUE))
-files <- files[str_detect(files, pattern = "conv")]
-
-conv <- purrr::map(files, function(f) {
-  
-  meta <- unglue(f, "/home/paola.corrales/datosmunin/EXP/{exp}/ANA/{ana_date}/diagfiles/asim_conv_{date}.ensmean")
-  diag <- fread(f) %>% 
-    .[, ":="(V2 = NULL,
-             V4 = NULL)] %>% 
-    .[, exp := meta[[1]][["exp"]]] %>% 
-    .[, date := ymd_hms(meta[[1]][["date"]])]
-  
-  colnames(diag) <- c("var", "stationID", "type", "dhr", "lat", "lon", "pressure", "usage.flag", "flag.prep", "obs", "obs.guess", "obs2", "obs.guess2", "rerr", "exp", "date")
-  
-  diag[, obs := ifelse(obs == -1e+05, NA, obs)][]
-  
-}) %>% rbindlist()
-    
-```
-
-```{r}
-conv[var == "q", .N, by = .(exp, type, date)] %>% 
-  ggplot(aes(date, N)) +
-  geom_line(aes(color = factor(type), linetype = exp)) +
-  geom_point(aes(color = factor(type), shape = exp)) +
-  facet_wrap(~type, scales = "free_y") +
-  theme_minimal()
-```
-
-```{r}
-conv[var == "t", .N, by = .(exp, type, date)] %>% 
-  ggplot(aes(date, N)) +
-  geom_line(aes(color = factor(type), linetype = exp)) +
-  geom_point(aes(color = factor(type), shape = exp)) +
-  facet_wrap(~type, scales = "free_y") +
-  theme_minimal()
-```
-```{r}
-conv[var == "uv", .N, by = .(exp, type, date)] %>% 
-  ggplot(aes(date, N)) +
-  geom_line(aes(color = factor(type), linetype = exp)) +
-  geom_point(aes(color = factor(type), shape = exp)) +
-  facet_wrap(~type, scales = "free_y") +
-  theme_minimal()
-```
-Radianzas
-
-```{r}
-files <- c(list.files("/home/paola.corrales/datosmunin/EXP/E7", 
-                    pattern = "asim.", recursive = TRUE, 
-                    full.names = TRUE),
-           list.files("/home/paola.corrales/datosmunin/EXP/E7-bis", 
-                    pattern = "asim.", recursive = TRUE, 
-                    full.names = TRUE))
-files <- files[!str_detect(files, pattern = "conv")]
-
-rad <- purrr::map(files, function(f) {
-  
-  meta <- unglue(f, "/home/paola.corrales/datosmunin/EXP/{exp}/ANA/{ana_date}/diagfiles/asim_{sensor}_{plat}_{date}.ensmean")
-  diag <- read_diag_mean_rad(f) %>% 
-    .[, exp := meta[[1]][["exp"]]] 
-  
-}) %>% rbindlist()
-```
-
-```{r}
-rad[qc == 0, .N, by = .(exp, date, sensor, channel)] %>% 
-  dcast(date + sensor + channel ~ exp) %>% 
-  .[, diff := E7 - `E7-bis`] %>% 
-  ggplot(aes(date, factor(channel))) +
-  geom_tile(aes(fill = `E7-bis`)) +
-  # scale_fill_divergent() +
-  scale_color_viridis_c() +
-  facet_wrap(~sensor, scales = "free_y") +
-  theme_minimal()
-```
-
-```{r}
-rad[qc == 0, .N, by = .(sensor, channel, exp)] %>% 
-   .[!(sensor %in% c(multiespectrales, "atms_npp", "hirs4_metop-b"))] %>% 
-  dcast(sensor + channel ~ exp) %>% 
-    setnafill(., fill = 0, cols = c("E7", "E7-bis")) %>% 
-  .[, diff := E7 - `E7-bis`] %>% 
-  .[, win := fifelse(diff >= 0, "E7", "E7-bis")] %>% 
-  melt(measure.vars = c("E7", "E7-bis"), value.name = "N", variable.name = "exp") %>% 
-  ggplot(aes(channel, sensor)) +
-  geom_point(aes(color = N, size = N)) +
-  geom_point(data = ~.x[win == exp], shape = 21, aes(size = N)) +
-  scale_color_viridis_c(direction = -1) +
-  facet_wrap(~exp, labeller = labeller(exp = c("E7" = "Nuevo exp",
-                                       "E7-bis" = "Sin estaciones automáticas"))) +
-  labs(subtitle = "Cantidad de observaciones asimilables")
-```
-
-```{r}
-n_obs <- rad[qc == 0, .N, by = .(sensor, channel, exp)] %>% 
-   .[!(sensor %in% c(multiespectrales, "atms_npp", "hirs4_metop-b"))] %>% 
-  dcast(sensor + channel ~ exp) %>% 
-  setnafill(., fill = 0, cols = c("E7", "E7-bis")) %>% 
-  .[, diff := E7 - `E7-bis`] %>% 
-  .[, win := fifelse(diff >= 0, "E7", "E7-bis")] %>% 
-  melt(measure.vars = c("E7", "E7-bis"), variable.name = "exp", value.name = "N")
-
-total <- rad %>% 
-  .[, .(bias_tbc = mean(tbc, na.rm = TRUE),
-        bias_tbcnob = mean(tbcnob, na.rm = TRUE)), 
-    by = .(sensor, channel, exp)] %>% 
-  dcast(sensor + channel ~ exp, value.var = "bias_tbc") %>% 
-  .[, abs_bias := abs(E7) - abs(`E7-bis`)] %>% 
-  melt(measure.vars = c("E7", "E7-bis"), value.name = "bias_tbc", variable.name = "exp") %>% 
-  # .[abs_bias, on = c("sensor", "channel", "exp")] %>% 
-  n_obs[., on = c("sensor", "channel", "exp")] %>% 
-  satinfo[., on = c("sensor", "channel")]
-
-total[iuse == 1 & exp == "E7"] %>% 
-  .[!(sensor %in% c(multiespectrales, "atms_npp"))] %>% 
- # dcast(sensor + channel + N ~ exp, value.var = "bias_tbc")
-  ggplot(aes(channel, sensor)) +
-  geom_point(aes(color = abs_bias, size = abs_bias)) +
-  geom_point(data = ~.x[!is.na(N) & exp == "E7"], shape = 21, aes(size = abs_bias)) +
-  # geom_text(aes(label = round(abs_bias, 1)), size = 2) +
-  # scale_color_viridis_c(trans = scales::log_trans(), breaks = c(0.1, 1, 10, 100),
-  #                       guide = guide_colourbar(barwidth = 7)) +
-  scale_color_divergent(trans = mesoda::symlog_trans(), breaks = c(-10, -1, 0, 1, 10),
-                        guide = guide_colourbar(barwidth = 7)) +
-  scale_size_area(guide = NULL) +
-  # facet_wrap(~exp, labeller = labeller(exp = c("E7" = "Nuevo exp",
-  #                                      "E7-bis" = "Sin estaciones automáticas"))) +
-  labs(title = "Nuevo experimento - Experimento sin est aut",
-       subtitle = "Incluyendo todas las observaciones",
-       color = "Bias\ndifference",
-       size = NULL) +
-  # theme_minimal() +
-  theme(legend.position = "bottom")
-```
-
-
-```{r}
-files <- c(list.files("/home/paola.corrales/datosmunin/EXP/E7",
-                    pattern = "satbias_2", 
-                    recursive = TRUE,
-                    full.names = TRUE),
-           list.files("/home/paola.corrales/datosmunin/EXP/E7-bis",
-                    pattern = "satbias_2", 
-                    recursive = TRUE,
-                    full.names = TRUE))
-
-satbias <- map(files, function(f){
-  
-  meta <- unglue(f, "/home/paola.corrales/datosmunin/EXP/{exp}/ANA/{date_ana}/satbias_enkf/satbias_{date}")
-  read_satbias(f) %>% 
-    as.data.table() %>% 
-    .[, ":="(date = ymd_hms(meta[[1]][["date"]]),
-             exp = meta[[1]][["exp"]])] 
-  
-}) %>% 
-  rbindlist()
-
-satbias <- satbias[sensor %in% sensores]
-
-satinfo <- fread(here::here("satinfo.txt")) %>% 
-  setnames(c("!sensor/instr/sat", "chan"), c("sensor", "channel"))
-
-satbias <- satinfo[satbias, on = c("sensor", "channel")]
-
-
-
-this_sensor <- sensores[2]
-
-satbias[sensor == this_sensor & iuse == 1] %>% 
-  .[channel %in% c(5:9)] %>%
   melt(measure.vars = paste0("coeff", c(1, 3:5, 8))) %>% 
   ggplot(aes(date, value)) +
+  geom_point(aes(color = variable, shape = exp), size = 2) +
   geom_path(aes(color = variable, linetype = exp), size= 0.5) +
   scale_color_brewer(type = "qual", palette = "Dark2",
                      labels = c("coeff1" = "Offset",
@@ -474,11 +99,177 @@ satbias[sensor == this_sensor & iuse == 1] %>%
                                 "coeff4" = "TLR^2",
                                 "coeff5" = "TLR",
                                 "coeff8" = "Emiss")) +
-  scale_linetype_discrete(name = "") +
-  scale_x_datetime(date_labels = "%d") +
-  labs(title = paste("Coeficientes de", this_sensor),
-       color = "", x = "Fecha", y = "") +
+  scale_x_datetime(date_labels = "%H", date_breaks = "3 hours") +
+  labs(title = paste("Coefficientes for", this_sensor),
+       color = "") +
   facet_wrap(~channel, scales = "free_y", ncol = 5) +
   theme_minimal() +
   theme(legend.position = "bottom")
 ```
+
+
+
+```{r}
+files <- Sys.glob("/home/paola.corrales/datosmunin/EXP/prueba_BC/ANA/*/diagfiles/asim*")
+
+files <- files[!str_detect(files, pattern = "conv")]
+
+diag_rad <- purrr::map(files, function(f) {
+  
+  out <- mesoda::read_diag_rad(f, exp = "training") %>%
+    use_table[., on = c("sensor", "channel")] %>% 
+    .[, usage.flag := fifelse(errinv %between% c(0.0000316227, 1000) & 
+                                iuse == 1 &
+                                qc == 0 & 
+                                peakwt %between% c(0.001, 1200), 1, -1)]
+}) %>% 
+  rbindlist()
+
+# 
+# diag_rad[, .(tbc_mean = mean(tbc, na.rm = TRUE),
+#              tbcnob_mean = mean(tbcnob, na.rm = TRUE),
+#              count = .N),
+#          by = .(sensor, channel, usage.flag, date)] %>%
+#   fwrite("/home/paola.corrales/mesoda/analysis/data/derived_data/bias_res_ori.csv")
+
+
+```
+
+```{r}
+coef_zero <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_zero-init.rds")$est %>% 
+  .[, .(tbc_mean = mean(OmB_BC, na.rm = TRUE),
+        tbcnob_mean = mean(OmB, na.rm = TRUE),
+        count = .N),
+    by = .(sensor, channel)] %>% 
+  use_table[., on = c("sensor", "channel")] %>% 
+  .[iuse == 1] %>% 
+  .[, ":="(run = "zero",
+           iuse = NULL)] 
+
+coef_gfs <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_gfs-init.rds")$est %>%
+  .[, .(tbc_mean = mean(OmB_BC, na.rm = TRUE),
+        tbcnob_mean = mean(OmB, na.rm = TRUE),
+        count = .N),
+    by = .(sensor, channel)] %>% 
+  use_table[., on = c("sensor", "channel")] %>% 
+  .[iuse == 1] %>% 
+  .[, ":="(run = "gfs",
+           iuse = NULL)] 
+
+coef_training <- fread("/home/paola.corrales/mesoda/analysis/data/derived_data/bias_res_ori.csv") %>% 
+  .[usage.flag == 1] %>% 
+  .[, usage.flag := NULL] %>% 
+  .[, run := "training"] 
+
+
+rbind(coef_zero, coef_gfs, coef_training) %>% 
+  .[, diff := abs(tbcnob_mean) - abs(tbc_mean)] %>% 
+  separate(sensor, into = c("sensor", "plat"), sep = "_") %>% 
+  # .[, range(diff, na.rm = TRUE)]
+  melt(id.vars = c("sensor", "channel", "run"), measure.vars = c("diff", "tbcnob_mean", "tbc_mean")) %>% 
+  .[abs(value) < 100] %>% 
+  ggplot(aes(sensor, value)) +
+  # geom_vline(xintercept = 0) +
+  geom_boxplot(aes(color = variable)) +
+  scale_color_viridis_d() +#labels = c("OmB BC", "OmB NoBC", "Difference")) +
+  facet_wrap(~run) +
+  theme_minimal()
+
+
+
+```
+```{r}
+coeff_gfs <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_gfs-init.rds")$coef_out
+
+bias_res <- diag_rad[usage.flag == 1, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", paste0("pred", 1:12), "date")] %>% 
+  coeff_gfs[., on = c("sensor", "channel")] %>% 
+  .[, bc := coeff1*pred1 + coeff2*pred2 +
+      coeff3*pred3 + coeff4*pred4 +
+      coeff5*pred5 + coeff6*pred6 +
+      coeff7*pred7 + coeff8*pred8 +
+      coeff9*pred9 + coeff10*pred10 +
+      coeff11*pred11 + coeff12*pred12] %>% 
+  .[, tbc_gfs := tbcnob - bc] %>% 
+  .[, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", "date", "bc", "tbc_gfs")] %>% 
+  separate(sensor, into = c("sensor", "plat"), sep = "_") %>% 
+    .[, .(tbc_mean = mean(tbc, na.rm = TRUE),
+        tbcnob_mean = mean(tbcnob, na.rm = TRUE),
+        tbc_gfs_mean = mean(tbc_gfs, na.rm = TRUE)),
+    by = .(sensor, channel, date)] 
+
+
+
+
+# fwrite(.Last.value, "/home/paola.corrales/mesoda/analysis/data/derived_data/bc_gfs.csv")
+
+
+bias_res %>% 
+  melt(id.vars = c("sensor", "channel", "date")) %>% 
+  .[variable != "tbc_gfs_mean"] %>% 
+  ggplot(aes(value)) +
+  geom_density(aes(color = variable)) +
+  facet_wrap(~sensor, scales = "free")
+
+
+bias_res %>% 
+    melt(id.vars = c("sensor", "channel", "date")) %>% 
+  .[abs(value) < 10] %>% 
+  ggplot(aes(sensor, value)) +
+  geom_boxplot(aes(color = variable))
+```
+```{r}
+coeff_zero <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_zero-init.rds")$coef_out
+
+bias_res <- diag_rad[usage.flag == 1, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", paste0("pred", 1:12), "date")] %>% 
+  coeff_zero[., on = c("sensor", "channel")] %>% 
+  .[, bc := coeff1*pred1 + coeff2*pred2 +
+      coeff3*pred3 + coeff4*pred4 +
+      coeff5*pred5 + coeff6*pred6 +
+      coeff7*pred7 + coeff8*pred8 +
+      coeff9*pred9 + coeff10*pred10 +
+      coeff11*pred11 + coeff12*pred12] %>% 
+  .[, tbc_zero := tbcnob - bc] %>% 
+  .[, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", "date", "bc", "tbc_gfs")] %>% 
+  separate(sensor, into = c("sensor", "plat"), sep = "_") %>% 
+    .[, .(tbc_mean = mean(tbc, na.rm = TRUE),
+        tbcnob_mean = mean(tbcnob, na.rm = TRUE),
+        tbc_sero_mean = mean(tbc_zero, na.rm = TRUE)),
+    by = .(sensor, channel, date)] 
+
+
+
+
+# fwrite(.Last.value, "/home/paola.corrales/mesoda/analysis/data/derived_data/bc_zero.csv")
+
+
+bias_res %>% 
+  melt(id.vars = c("sensor", "channel", "date")) %>% 
+  ggplot(aes(value)) +
+  geom_density(aes(color = variable)) +
+  facet_wrap(~sensor, scales = "free")
+
+
+bias_res %>% 
+    melt(id.vars = c("sensor", "channel", "date")) %>% 
+  .[abs(value) < 10] %>% 
+  ggplot(aes(sensor, value)) +
+  geom_boxplot(aes(color = variable))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
