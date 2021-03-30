@@ -34,14 +34,11 @@ multiespectrales <- c("airs_aqua",
 ```
 
 ```{r eval=FALSE, include=FALSE}
-files <- list.files("/home/paola.corrales/datosmunin/EXP/prueba_BC",
-                    pattern = "satbias_2", 
-                    recursive = TRUE,
-                    full.names = TRUE)
+files <- Sys.glob("/home/paola.corrales/datosmunin/EXP/prueba_BC/ANA/*/satbias_enkf/satbias_2*")
 
 
 satbias <- map(files, function(f){
-  # print(basename(f))
+  print(basename(f))
   meta <- unglue::unglue(f, "/home/paola.corrales/datosmunin/EXP/prueba_BC/{exp}/{date_ana}/satbias_enkf/satbias_{date}")
   read_satbias(f) %>% 
     as.data.table() %>% 
@@ -87,23 +84,37 @@ multiespectrales <- c("airs_aqua",
 
 this_sensor <- sensores[2]
 
-satbias[sensor %in% this_sensor & iuse == 1 & channel == 6] %>% 
-  melt(measure.vars = paste0("coeff", c(1, 3:5, 8))) %>% 
-  ggplot(aes(date, value)) +
-  geom_point(aes(color = variable, shape = exp), size = 2) +
-  geom_path(aes(color = variable, linetype = exp), size= 0.5) +
-  scale_color_brewer(type = "qual", palette = "Dark2",
-                     labels = c("coeff1" = "Offset",
-                                "coeff3" = "CLW",
-                                "coeff4" = "TLR^2",
-                                "coeff5" = "TLR",
-                                "coeff8" = "Emiss")) +
-  scale_x_datetime(date_labels = "%H", date_breaks = "3 hours") +
-  labs(title = paste("Coefficientes for", this_sensor),
-       color = "") +
-  facet_wrap(~channel, scales = "free_y", ncol = 5) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
+
+for (this_sensor in sensores){
+  print(this_sensor)
+  g <- satbias[sensor %in% this_sensor & iuse == 1] %>% 
+    melt(measure.vars = paste0("coeff", c(1, 3:5, 8))) %>% 
+    ggplot(aes(date, value)) +
+    # geom_point(aes(color = variable), size= 0.5) +
+    geom_path(aes(color = variable), size= 0.5) +
+    scale_color_brewer(type = "qual", palette = "Dark2",
+                       labels = c("coeff1" = "Offset",
+                                  "coeff3" = "CLW",
+                                  "coeff4" = "TLR^2",
+                                  "coeff5" = "TLR",
+                                  "coeff8" = "Emiss")) +
+    scale_x_datetime(date_labels = "%d") +
+    labs(title = paste("Coefficientes for", this_sensor),
+         color = "") +
+    facet_wrap(~channel, scales = "free_y", ncol = 5) +
+    theme_minimal() +
+    theme(legend.position = "bottom")
+  
+  rows <- satbias[sensor %in% this_sensor & iuse == 1, channel] %>% 
+    unique(by = channel) %>% 
+    length() / 5
+  
+  h <- ceiling(ceiling(rows)*700/300)
+  if (h > 0){
+    
+    ggsave(paste0(this_sensor, ".png"), plot = g, width = 9, height = h, limitsize = FALSE)
+  }
+}
 ```
 
 
@@ -138,6 +149,8 @@ diag_rad <- purrr::map(files, function(f) {
 coef_zero <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_zero-init.rds")$est %>% 
   .[, .(tbc_mean = mean(OmB_BC, na.rm = TRUE),
         tbcnob_mean = mean(OmB, na.rm = TRUE),
+        tbc_sd = sd(OmB_BC, na.rm = TRUE),
+        tbcnob_sd = sd(OmB, na.rm = TRUE),
         count = .N),
     by = .(sensor, channel)] %>% 
   #use_table[., on = c("sensor", "channel")] %>% 
@@ -148,6 +161,8 @@ coef_zero <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_
 coef_gfs <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_gfs-init.rds")$est %>%
   .[, .(tbc_mean = mean(OmB_BC, na.rm = TRUE),
         tbcnob_mean = mean(OmB, na.rm = TRUE),
+        tbc_sd = sd(OmB_BC, na.rm = TRUE),
+        tbcnob_sd = sd(OmB, na.rm = TRUE),
         count = .N),
     by = .(sensor, channel)] %>% 
   #use_table[., on = c("sensor", "channel")] %>% 
@@ -160,6 +175,8 @@ coef_training <- diag_rad %>% #fread("/home/paola.corrales/mesoda/analysis/data/
   .[, usage.flag := NULL] %>%
   .[, .(tbc_mean = mean(tbc, na.rm = TRUE),
         tbcnob_mean = mean(tbcnob, na.rm = TRUE),
+        tbc_sd = sd(tbc, na.rm = TRUE),
+        tbcnob_sd = sd(tbcnob, na.rm = TRUE),
         count = .N),
     by = .(sensor, channel)] %>%
   .[, run := "training"] 
@@ -167,20 +184,50 @@ coef_training <- diag_rad %>% #fread("/home/paola.corrales/mesoda/analysis/data/
 sensor_list <- unique(coef_training$sensor)
 
 
+  rbind(coef_zero, coef_gfs, coef_training) %>% 
+    .[sensor == "iasi_metop-b"] %>% 
+    melt(id.vars = c("sensor", "channel", "run"), 
+         measure.vars = c("tbcnob_mean", "tbc_mean", "tbc_sd", "tbcnob_sd")) %>% 
+    separate(variable, into = c("variable", "estadistico")) %>% 
+    dcast(sensor + channel + run + variable ~ estadistico, value.var = "value") %>% 
+    use_table[., on = c("sensor", "channel")] %>%
+    ggplot(aes(channel, mean)) +
+    geom_hline(yintercept = 0, color = "grey20") +
+    # geom_errorbar(data = ~.x[run == "training" & variable == "tbcnob"], 
+    #               aes(ymin = mean - sd, ymax = mean + sd, fill = "no BC"), width = 0.15) +
+    geom_point(data = ~.x[run == "training" & variable == "tbcnob"], aes(fill = "no BC"), size = 2, shape = 15) +
+    # geom_errorbar(data = ~.x[variable == "tbc"], aes(ymin = mean - sd, ymax = mean + sd, color = run), 
+    #               width = 0.15, alpha = 0.8) +
+    geom_point(data = ~.x[variable == "tbc"], aes(color = run), alpha = 0.8) +
+    scale_color_viridis_d(labels = c("From GFS", "From Zero", "From GSI")) +
+    facet_wrap(~iuse, scales = "free_y") +
+    labs(x = "Channel", y = "Mean BIAS", color = NULL, fill = NULL,
+         caption = "iasi_metop-b") +
+    theme_minimal()
+
+pd <- position_dodge(width = 0.4)
 for (s in sensor_list) {
   rbind(coef_zero, coef_gfs, coef_training) %>% 
-    .[sensor == s] %>% 
-    melt(id.vars = c("sensor", "channel", "run"), measure.vars = c("tbcnob_mean", "tbc_mean")) %>% 
-    ggplot(aes(channel, value)) +
+    .[sensor == s & abs(tbc_mean) < 10] %>% 
+    melt(id.vars = c("sensor", "channel", "run"), 
+         measure.vars = c("tbcnob_mean", "tbc_mean", "tbc_sd", "tbcnob_sd")) %>% 
+    separate(variable, into = c("variable", "estadistico")) %>% 
+    dcast(sensor + channel + run + variable ~ estadistico, value.var = "value") %>% 
+    ggplot(aes(channel, mean)) +
     geom_hline(yintercept = 0, color = "grey20") +
-    geom_point(data = ~.x[run == "training" & variable == "tbcnob_mean"], aes(fill = "no BC"),  shape = 15) +
-    geom_point(data = ~.x[variable == "tbc_mean"], aes(color = run), size = 0.8, alpha = 0.8) +
+    geom_errorbar(data = ~.x[run == "training" & variable == "tbcnob"], 
+                  aes(ymin = mean - sd, ymax = mean + sd, fill = "no BC"), width = 0.15, position = pd) +
+    geom_point(data = ~.x[run == "training" & variable == "tbcnob"], aes(fill = "no BC"), 
+               size = 2, shape = 15, position = pd) +
+    geom_errorbar(data = ~.x[variable == "tbc"], aes(ymin = mean - sd, ymax = mean + sd, color = run), 
+                  width = 0.15, alpha = 0.8, position = pd) +
+    geom_point(data = ~.x[variable == "tbc"], aes(color = run), alpha = 0.8, position = pd) +
     scale_color_viridis_d(labels = c("From GFS", "From Zero", "From GSI")) +
     labs(x = "Channel", y = "Mean BIAS", color = NULL, fill = NULL,
          caption = paste0(s)) +
     theme_minimal()
   
-  ggsave(paste0("/home/paola.corrales/campos/mean_bias_", s, ".png"), width = 10, height = 6)
+  ggsave(paste0("/home/paola.corrales/campos/mean_sd_bias_", s, ".png"), width = 10, height = 6)
 }
 ```
 
@@ -188,7 +235,7 @@ for (s in sensor_list) {
 coeff_gfs <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_gfs-init.rds")$coef_out 
 
 bias_res_gfs <- diag_rad[qc == 0, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", paste0("pred", 1:12), "date")] %>% 
-  coeff_gfs[., on = c("sensor", "id" = "channel")] %>% 
+  coeff_gfs[., on = c("sensor", "channel")] %>% 
   .[, bc := coeff1*pred1 + coeff2*pred2 +
       coeff3*pred3 + coeff4*pred4 +
       coeff5*pred5 + coeff6*pred6 +
@@ -208,7 +255,7 @@ bias_res_gfs <- diag_rad[qc == 0, c("sensor", "channel", "iuse", "tb_obs", "tbc"
 coeff_zero <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_zero-init.rds")$coef_out
 
 bias_res_zero <- diag_rad[qc == 0, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", paste0("pred", 1:12), "date")] %>% 
-  coeff_zero[., on = c("sensor", "id" = "channel")] %>% 
+  coeff_zero[., on = c("sensor", "channel")] %>% 
   .[, bc := coeff1*pred1 + coeff2*pred2 +
       coeff3*pred3 + coeff4*pred4 +
       coeff5*pred5 + coeff6*pred6 +
@@ -258,7 +305,7 @@ bias_res %>%
 # coeff_gfs <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_gfs-init.rds")$coef_out 
 
 bias_res_gfs <- diag_rad[usage.flag == 1, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", paste0("pred", 1:12), "date")] %>% 
-  coeff_gfs[., on = c("sensor", "id" = "channel")] %>% 
+  coeff_gfs[., on = c("sensor", "channel")] %>% 
   .[, bc := coeff1*pred1 + coeff2*pred2 +
       coeff3*pred3 + coeff4*pred4 +
       coeff5*pred5 + coeff6*pred6 +
@@ -278,7 +325,7 @@ bias_res_gfs <- diag_rad[usage.flag == 1, c("sensor", "channel", "iuse", "tb_obs
 # coeff_zero <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_zero-init.rds")$coef_out
 
 bias_res_zero <- diag_rad[usage.flag == 1, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", paste0("pred", 1:12), "date")] %>% 
-  coeff_zero[., on = c("sensor", "id" = "channel")] %>% 
+  coeff_zero[., on = c("sensor", "channel")] %>% 
   .[, bc := coeff1*pred1 + coeff2*pred2 +
       coeff3*pred3 + coeff4*pred4 +
       coeff5*pred5 + coeff6*pred6 +
@@ -323,6 +370,52 @@ bias_res %>%
   theme_minimal()
 
 ```
+
+```{r}
+# coeff_gfs <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_gfs-init.rds")$coef_out 
+
+bias_res_gfs <- diag_rad[usage.flag == 1, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", paste0("pred", 1:12), "date")] %>% 
+  coeff_gfs[., on = c("sensor", "id" = "channel")] %>% 
+  .[, bc := coeff1*pred1 + coeff2*pred2 +
+      coeff3*pred3 + coeff4*pred4 +
+      coeff5*pred5 + coeff6*pred6 +
+      coeff7*pred7 + coeff8*pred8 +
+      coeff9*pred9 + coeff10*pred10 +
+      coeff11*pred11 + coeff12*pred12] %>% 
+  .[, tbc_gfs := tbcnob - bc] %>% 
+  .[, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", "date", "bc", "tbc_gfs")] %>% 
+  separate(sensor, into = c("sensor", "plat"), sep = "_") %>% 
+  .[, .(tbc_mean = mean(tbc, na.rm = TRUE),
+        tbcnob_mean = mean(tbcnob, na.rm = TRUE),
+        tbc_test_mean = mean(tbc_gfs, na.rm = TRUE)),
+    by = .(sensor, channel, date)] %>% 
+  .[, run := "gfs"]
+
+
+# coeff_zero <- read_rds("/home/paola.corrales/datosmunin/EXP/derived_data/satbias_trained_zero-init.rds")$coef_out
+
+bias_res_zero <- diag_rad[usage.flag == 1, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", paste0("pred", 1:12), "date")] %>% 
+  coeff_zero[., on = c("sensor", "id" = "channel")] %>% 
+  .[, bc := coeff1*pred1 + coeff2*pred2 +
+      coeff3*pred3 + coeff4*pred4 +
+      coeff5*pred5 + coeff6*pred6 +
+      coeff7*pred7 + coeff8*pred8 +
+      coeff9*pred9 + coeff10*pred10 +
+      coeff11*pred11 + coeff12*pred12] %>% 
+  .[, tbc_zero := tbcnob - bc] %>% 
+  .[, c("sensor", "channel", "iuse", "tb_obs", "tbc", "tbcnob", "date", "bc", "tbc_zero")] %>% 
+  separate(sensor, into = c("sensor", "plat"), sep = "_") %>% 
+  .[, .(tbc_mean = mean(tbc, na.rm = TRUE),
+        tbcnob_mean = mean(tbcnob, na.rm = TRUE),
+        tbc_test_mean = mean(tbc_zero, na.rm = TRUE)),
+    by = .(sensor, channel, date)] %>% 
+  .[, run := "zero"]
+
+bias_res <- rbind(bias_res_zero, bias_res_gfs)
+
+
+```
+
 
 ```{r}
 
