@@ -94,16 +94,16 @@ uvmet <- function(ncfile) {
   umet <- v * longcb + u * longca
   vmet <- v * longca - u * longcb
   
-  list(c(umet), 
+  list(c(umet),
        c(vmet))
 }
 
 
 # wrf_proj ----------------------------------------------------------------
+map_proj <- "+proj=lcc +lat_1=-30.9659996032715 +lat_2=-30.9659996032715 +lat_0=-30.9660034179688 +lon_0=-63.5670013427734 +a=6370000 +b=6370000"
 
-
-wrf_project <- function(lon, lat, inverse = FALSE, round = TRUE) {
-  map_proj <- "+proj=lcc +lat_1=-30.9659996032715 +lat_2=-30.9659996032715 +lat_0=-30.9660034179688 +lon_0=-63.5670013427734 +a=6370000 +b=6370000"
+wrf_project <- function(lon, lat, map_proj = map_proj, inverse = FALSE, round = TRUE) {
+  
   xy <- proj4::project(list(lon, lat), map_proj, inverse = inverse)
   if (round == TRUE) {
   list(x = round(xy$x, -3),
