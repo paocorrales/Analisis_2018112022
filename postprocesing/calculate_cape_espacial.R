@@ -16,7 +16,7 @@ capear <- function(p, t, q) {
 
 fcst <- c("20181121210000", "20181122000000", "20181122030000", "20181122060000")
 
-files <- map(fcst, function(x) paste0("/glade/scratch/jruiz/EXP/E3/ANA/", x, "/analysis.ensmean"))
+files <- map(fcst, function(x) paste0("~/datosmunin3/EXP/E6_long/ANA/", x, "/analysis.ensmean"))
 lat_band <- list(south_north = 105:109)
 
 files

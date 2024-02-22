@@ -2,8 +2,8 @@
 
 module load R
 
-FCST='2018112206'	# Fecha de pronóstico con formato YYYYMMDDHH
-EXP='E4'		# Nombre del experimento
+FCST='2018112200'	# Fecha de pronóstico con formato YYYYMMDDHH
+EXP='E8'		# Nombre del experimento
 TMEM=60                 # Cantidad de miembros del ensamble
 
 MEM=1

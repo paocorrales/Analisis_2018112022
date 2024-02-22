@@ -15,9 +15,10 @@ library(lubridate)
 library(here)
 source(here("help_functions.R"))
 source(here("postprocesamiento.R"))
+map_proj <- "+proj=lcc +lat_1=-30.9659996032715 +lat_2=-30.9659996032715 +lat_0=-30.9660034179688 +lon_0=-63.5670013427734 +a=6370000 +b=6370000"
 
 # leo sondeos
-files <- list.files(path = "/glade/work/jruiz/sondeos_raw",
+files <- list.files(path = "/home/paola.corrales/datosmunin3/DATA/OBS_RELAMPAGO/sondeos_raw",
                     pattern = "cls", full.names = TRUE)
 
 sondeos <- purrr::map(files, ~ read_radiosonde_relampago(.x)) %>%
@@ -27,7 +28,7 @@ message("Listo sondeos")
 
 # itero sobre pronósticos
 
-files <- list.files(path = paste0("/glade/scratch/jruiz/EXP/", args[1], "/FCST/", args[3],"/", args[2]), 
+files <- list.files(path = paste0("/home/paola.corrales/datosmunin3/EXP/", args[1], "/FCST/", args[3],"/", args[2]), 
                     recursive = TRUE, pattern = "wrfout", full.names = TRUE)
 
 #files <- files[60:70]
@@ -35,7 +36,7 @@ for (f in files) {
   
   message(paste("Procesando :", f))
   
-  descriptores <- unglue::unglue(f, c("/glade/scratch/jruiz/EXP/{exp}/FCST/{fcst}/{member}/wrfout_d01_{date}.mean", "/glade/scratch/jruiz/EXP/{exp}/FCST/{fcst}/{member}/wrfout_d01_{date}"))
+  descriptores <- unglue::unglue(f, c("/home/paola.corrales/datosmunin3/EXP/{exp}/FCST/{fcst}/{member}/wrfout_d01_{date}.mean", "/home/paola.corrales/datosmunin3/EXP/{exp}/FCST/{fcst}/{member}/wrfout_d01_{date}"))
 #  if (as.numeric(descriptores[[1]][["member"]]) <= 16) {
 #	next
 #}
@@ -63,7 +64,7 @@ for (f in files) {
   intervalo <- interval(fcst_time - minutes(5), fcst_time + minutes(5))
   
   subset <- sondeos[time %within% intervalo] %>% 
-    .[, c("xp", "yp") := wrf_project(lon, lat, round = FALSE)]
+    .[, c("xp", "yp") := mesoda::wrf_project(lon, lat, round = FALSE, map_proj = map_proj)]
   
   message(paste0(nrow(subset), " observaciones de sondeos en este tiempo"))
   
@@ -83,7 +84,7 @@ for (f in files) {
     out <- fcst %>% 
       .[lat %between% ry & lon %between% rx] %>%
       melt(id.vars = c("bottom_top", "lon", "lat", "time", "init_time", "exp", "member")) %>% 
-      .[, c("xp", "yp") := wrf_project(lon, lat)] %>%
+      .[, c("xp", "yp") := mesoda::wrf_project(lon, lat, map_proj = map_proj)] %>%
       .[, interp_lite(xp, yp, value, 
                       xo = unique_subset[site == x]$xp, 
                       yo = unique_subset[site == x]$yp,
@@ -118,6 +119,6 @@ for (f in files) {
              member = descriptores[[1]][["member"]])] %>%
     .[]
   
-  fwrite(subset, paste0("/glade/scratch/jruiz/EXP/analisis/sondeos/", args[3], "/sondeo_", descriptores[[1]][["exp"]], "_",
+  fwrite(subset, paste0("/home/paola.corrales/datosmunin3/EXP/", args[1], "/FCST/", args[3], "/sondeos/sondeo_", descriptores[[1]][["exp"]], "_",
                         descriptores[[1]]["member"], "_",  format(fcst_time, "%Y%m%d%H%M%S"), ".csv"))
 } 

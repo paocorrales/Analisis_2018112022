@@ -36,8 +36,7 @@ for (f in files) {
   
   message(paste("Procesando :", f))
   
-  descriptores <- unglue::unglue(f, c("/glade/scratch/jruiz/EXP/{exp}/FCST/{fcst}/{member}/wrfout_d01_{date}.mean", "/glade/scratch/jruiz/EXP/{exp}/FCST/{fcst}/{member}/wrfout_d01_{date}",
-                                      "/home/paola.corrales/datosmunin/EXP/{exp}/GUESS/{date}/wrfarw.{mem}"))
+  descriptores <- unglue::unglue(f, c("/home/paola.corrales/datosmunin/EXP/{exp}/GUESS/{date}/wrfarw.{mem}"))
 
   # Leo pronóstico con algo de post procesamiento
   fcst <- ReadNetCDF(f, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR", 

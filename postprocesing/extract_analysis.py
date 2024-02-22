@@ -7,8 +7,8 @@ import numpy as np
 from netCDF4 import Dataset
 import xarray as xr
 
-#pathANA = "/glade/scratch/jruiz/EXP/E3/ANA/20181121210000/analysis.ensmean"
-pathANA = "/home/paola.corrales/comGSIv3.7_EnKFv1.3/examples/test/gsi/wrfanl.2018112100"
+pathANA = "/home/paola.corrales/datosmunin3/EXP/E2/ANA/20181122060000/analysis.ensmean"
+#pathANA = "/home/paola.corrales/comGSIv3.7_EnKFv1.3/examples/test/gsi/wrfanl.2018112100"
 ncfile = Dataset(pathANA)
 
 
@@ -43,7 +43,7 @@ def write_xarray_to_netcdf(xarray_array, output_path, mode='w', format='NETCDF4'
                            engine=engine,
                            encoding=encoding)
 
-write_xarray_to_netcdf(u, "u_no_satwind.nc", engine ="netcdf4")
-write_xarray_to_netcdf(v, "v_no_satwind.nc", engine ="netcdf4")
-write_xarray_to_netcdf(t, "t_no_satwind.nc", engine ="netcdf4")
-write_xarray_to_netcdf(q, "q_no_satwind.nc", engine ="netcdf4")
+write_xarray_to_netcdf(u, "u_20181122060000_E2.nc", engine ="netcdf4")
+write_xarray_to_netcdf(v, "v_20181122060000_E2.nc", engine ="netcdf4")
+write_xarray_to_netcdf(t, "t_20181122060000_E2.nc", engine ="netcdf4")
+write_xarray_to_netcdf(q, "q_20181122060000_E2.nc", engine ="netcdf4")

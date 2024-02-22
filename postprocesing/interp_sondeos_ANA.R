@@ -4,7 +4,7 @@
 #   stop("Argumentos: exp, miembro, init_date (yyyymmddhhmmss)", call.=FALSE)
 # }
 
-args <- c("E5", "ensmean", "20181120180000")
+args <- c("E6_long", "ensmean", "20181108000000")
 
 args[1]
 args[2]
@@ -19,7 +19,7 @@ source("/home/paola.corrales/Analisis_2018112022/help_functions.R")
 source("/home/paola.corrales/Analisis_2018112022/postprocesamiento.R")
 
 # leo sondeos
-files <- list.files(path = "/home/paola.corrales/datosmunin/DA/DA_DATA/OBS_RELAMPAGO/sondeos_raw",
+files <- list.files(path = "/home/paola.corrales/datosmunin3/DATA/RELAMPAGO/sondeos_raw/",
                     pattern = "cls", full.names = TRUE)
 
 sondeos <- purrr::map(files, ~ read_radiosonde_relampago(.x)) %>%
@@ -29,21 +29,21 @@ message("Listo sondeos")
 
 # itero sobre pronósticos
 
-files <- Sys.glob(paste0("/home/paola.corrales/datosmunin3/EXP/", args[1], "/ANA/*/analysis.mem*"))[1021:1740]
+files <- Sys.glob(paste0("/home/paola.corrales/datosmunin3/EXP/", args[1], "/ANA/*/analysis.ensmean"))
 
 #files <- files[60:70]
 for (f in files) {
   
   message(paste("Procesando :", f))
   
-  descriptores <- unglue::unglue(f, c("/home/paola.corrales/datosmunin3/EXP/{exp}/ANA/{date}/analysis.mem{mem}"))
+  descriptores <- unglue::unglue(f, c("/home/paola.corrales/datosmunin3/EXP/{exp}/ANA/{date}/analysis.ensmean"))
 
   fcst_time <- ymd_hms(descriptores[[1]][["date"]])
   
   intervalo <- interval(fcst_time - minutes(30), fcst_time + minutes(30))
   
   subset <- sondeos[time %within% intervalo] %>% 
-    .[, c("xp", "yp") := wrf_project(lon, lat, round = FALSE)]
+    .[, c("xp", "yp") := mesoda::wrf_project(lon, lat, round = FALSE)]
   
   message(paste0(nrow(subset), " observaciones de sondeos en este tiempo"))
   
@@ -55,7 +55,7 @@ for (f in files) {
   fcst <- ReadNetCDF(f, vars = c(p = "P", "PB", t = "T", qv = "QVAPOR",
                                  lon = "XLONG", lat = "XLAT")) %>%
     .[, p := p + PB] %>%
-    .[, t := tk(t, p)] %>%
+    .[, t := tk(t, p, T_BASE = 300)] %>%
     .[, rh := rh(qv, p, t)] %>%
     .[, td := td(qv, p) + 273.15] %>%
     .[, ":="(Time = NULL,
@@ -65,8 +65,7 @@ for (f in files) {
              PB = NULL)] %>%
     .[, c("u", "v") := uvmet(f)] %>%
     .[, ":="(date = ymd_hms(descriptores[[1]][["date"]]),
-             exp = descriptores[[1]][["exp"]],
-             member = descriptores[[1]][["mem"]])] %>%
+             exp = descriptores[[1]][["exp"]])] %>%
     .[]
 
 
@@ -81,13 +80,13 @@ for (f in files) {
     ry <- range(unique_subset[site == x]$lat, na.rm = TRUE) + c(-1, 1)
     out <- fcst %>% 
       .[lat %between% ry & lon %between% rx] %>%
-      melt(id.vars = c("bottom_top", "lon", "lat", "date", "exp", "member")) %>% 
-      .[, c("xp", "yp") := wrf_project(lon, lat)] %>%
+      melt(id.vars = c("bottom_top", "lon", "lat", "date", "exp")) %>% 
+      .[, c("xp", "yp") := mesoda::wrf_project(lon, lat)] %>%
       .[, interp_lite(xp, yp, value, 
                       xo = unique_subset[site == x]$xp, 
                       yo = unique_subset[site == x]$yp,
                       output = "points"),
-        by = .(bottom_top, variable, date, exp, member)]
+        by = .(bottom_top, variable, date, exp)]
   }) %>% 
     rbindlist() 
   # %>%
@@ -95,7 +94,7 @@ for (f in files) {
   message(paste("Interpolación ok!"))
   
   fcst_obs <- fcst_obs[variable != "p"] %>% 
-    .[fcst_obs[variable == "p"], on = c("bottom_top", "date", "x", "y", "exp", "member")] %>% 
+    .[fcst_obs[variable == "p"], on = c("bottom_top", "date", "x", "y", "exp")] %>% 
     setnames(c("x", "y", "z", "i.z"), c("xp", "yp", "value", "p"))
   
   approx_safe <- function(lon_by, lat_by, variable_by, p) {
@@ -113,10 +112,9 @@ for (f in files) {
     melt(measure.vars = c("t", "td", "rh", "u", "v")) %>% 
     .[, fcst_value := approx_safe(.BY$xp, .BY$yp, .BY$variable, p), 
       by = .(xp, yp, variable)] %>%
-    .[, ":="(exp = descriptores[[1]][["exp"]],
-             member = descriptores[[1]][["mem"]])] %>%
+    .[, ":="(exp = descriptores[[1]][["exp"]])] %>%
     .[]
   
   fwrite(subset, paste0("/home/paola.corrales/datosmunin3/EXP/derived_data/sondeos/ANA/sondeo_", descriptores[[1]][["exp"]], "_",
-                        descriptores[[1]][["mem"]], "_",  format(fcst_time, "%Y%m%d%H%M%S"), ".csv"))
+              format(fcst_time, "%Y%m%d%H%M%S"), "new.csv"))
 } 
