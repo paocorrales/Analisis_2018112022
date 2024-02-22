@@ -1,0 +1,657 @@
+---
+title: "comparacion experimentos"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(mesoda)
+library(metR)
+library(tidyverse)
+library(lubridate)
+library(data.table)
+library(here)
+library(patchwork)
+library(unglue)
+library(tagger)
+library(knitr)
+library(kableExtra)
+#source(here::here("temp_R", "goes_functions.R"))
+
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+
+
+geom_mapa <- function() {
+  list(geom_sf(data = map, fill = NA, color = "black", size = 0.1, inherit.aes = FALSE),
+       coord_sf(xlim = c(-76, -52), ylim = c(-41, -20)))
+}
+
+#dominio de interés
+xlim <- c(2600, 3950)
+ylim <- c(3700, 4750)
+
+lon_band <- c(-66.5, -61.5)
+lat_band <- c(-35.5, -29)
+
+scale_date <- function(ini = 20181120180000, end = 20181123120000,
+                       break_bin = "6 hour") {
+  scale_x_datetime(breaks = seq.POSIXt(ymd_hms(ini), ymd_hms(end), by = break_bin),
+                   labels = function(x) {
+                     fifelse(hour(x) == 0, format(x, "%H\n%b %d"), format(x, "%H"))
+                   }) 
+}
+
+derived_data <- "/home/paola.corrales/datosmunin3/EXP/derived_data/"
+
+colores_exp <- c(E2 = "#0077BB", E5 = "#88CCEE", E6 = "#EE7733", 
+                 E9 = "#CC3311", E10 = "chartreuse4") 
+
+channels <- c("8" = "Ch 8 - upper level", 
+              "9" = "Ch 9 - middle level", 
+              "10" = "Ch 10 - lower level")
+
+satinfo <- fread("~/mesoda/analysis/data/derived_data/satinfo.txt") %>% 
+  setnames(c("!sensor/instr/sat", "chan"), c("sensor", "channel"))
+```
+
+
+```{r}
+path_data <- "/home/paola.corrales/datosmunin3/EXP/"
+
+files_gue <- Sys.glob(paste0(path_data, "E10/ANA/*/diagfiles/asim_abi_g16_*.ensmean"))
+files_ana <- Sys.glob(paste0(path_data, "E10/ANA/*/diagfiles_ana/asim_abi_g16_*.ensmean"))
+
+d <- map2(files_gue, files_ana, function(fg, fa) {
+  
+  meta <- unglue::unglue(fg, "/home/paola.corrales/datosmunin3/EXP/E10/ANA/{date}/diagfiles/asim_abi_g16_{date2}.ensmean")
+  gue <- read_diag_rad(fg, "E10") %>% 
+    .[, channel := channel + 6] %>% 
+    .[channel %in% c(8:10) & qc == 0, .(channel, lat, lon, tb_obs, tbc)] %>% 
+    .[, run := "guess"]
+  
+  ana <- read_diag_rad(fa, "E10") %>% 
+    .[, channel := channel + 6] %>% 
+    .[channel %in% c(8:10) & qc == 0, .(channel, lat, lon, tb_obs, tbc)] %>% 
+    .[, run := "ana"]
+  
+  rbind(ana, gue) %>% 
+    .[, fecha := meta[[1]][["date"]]] %>% 
+    .[, ":="(lon.box = cut_round(lon, breaks = seq(284, 309, 2.5)),
+             lat.box = cut_round(lat, breaks = seq(-42, -17, 2.5)))] %>% 
+    .[]
+  
+}) %>% 
+  rbindlist()
+
+d %>% 
+  ggplot(aes(tb_obs, tb_obs - tbc)) +
+  geom_point(alpha = 0.5, size = 0.5) +
+  geom_abline(slope = 1, intercept = 0, color = "darkorange") +
+  facet_grid(channel ~ run, labeller = labeller(run = c("ana" = "Analysis",
+                                                        "guess" = "Backgroud"),
+                                                channel = c("8" = "Channel 8",
+                                                            "9" = "Channel 9",
+                                                            "10" = "Channel 10")),
+             scales = "free") +
+  labs(x = "TB obs", y = "TB model") +
+  theme_minimal()
+```
+```{r}
+d %>% 
+  ggplot(aes(tbc)) +
+  geom_density(aes(color = run)) +
+  scale_x_continuous(limits = c(-5, 5)) +
+  labs(x = "omb/oma") +
+  facet_wrap(~channel) +
+  theme_minimal()
+```
+```{r}
+d[, .(rms = sqrt(mean(tbc^2))), by = .(channel, run)] %>% 
+  dcast(run ~ channel)
+```
+
+
+```{r}
+imerg <- readRDS("/home/paola.corrales/mesoda/analysis/data/derived_data/IMERG_1h.rds")
+
+q <- c(1, 5, 10, 25, 50)
+imerg <- purrr::map(q, function(f){
+  
+  imerg %>%
+    .[, c("lon", "lat") := wrf_project(x, y, inverse = TRUE, round = FALSE)] %>% 
+    .[lon %between% lon_band & lat %between% lat_band] %>%
+    .[, .(area = sum(pp_acum > f)/.N), by = .(end_date)] %>%
+    .[, umbral := f] %>%
+    .[]
+}) %>%
+  rbindlist()
+
+
+files <- Sys.glob("/home/paola.corrales/datosmunin3/EXP/derived_data/ppacum/E*[1235689]*_ana*_area_acum_*.rds")
+
+pp_area <- purrr::map(files, function(f) {
+  
+  readRDS(f)
+  # %>% 
+  #   .[, c("lon", "lat") := wrf_project(x, y, inverse = TRUE, round = FALSE)]
+  
+}) %>% rbindlist()
+
+pp_area %>% 
+  .[umbral %in% c(1, 5, 10)] %>% 
+  .[exp %in% c("E6", "E9", "E10", "EG3")] %>% 
+  .[, .(mean_area = mean(area),
+        max_area = max(area),
+        min_area = min(area)), by = .(umbral, date, exp)] %>% 
+  ggplot(aes(date, mean_area)) +
+  geom_line(data = imerg[umbral %in% c(1, 5, 10)], 
+            aes(end_date, area, color = "OBS"),
+            linetype = 2) +
+  geom_line(aes(color = exp)) +
+  geom_ribbon(aes(ymin = min_area, ymax = max_area, fill = exp), alpha = .1) +
+  scale_color_manual(values = c(OBS = "grey20", colores_exp, EG3 = "blue") ,
+                     labels = c(E2 = "CONV", E5 = "ASWS",
+                                E6 = "SATWND", EG3 = "only ABI",
+                                E9 = "RAD", E10 = "ABI", OBS = "OBS")) +
+  scale_fill_manual(values = c(OBS = "grey20", colores_exp, EG3 = "blue"), 
+                    guide = NULL,
+                    labels = c(E2 = "CONV", E5 = "ASWS",
+                               E6 = "SATWND", EG3 = "only ABI",
+                               E9 = "RAD", E10 = "ABI", OBS = "OBS")) +
+  scale_y_continuous(label = scales::percent_format()) +
+  scale_x_datetime(limits = c(ymd_hms(20181121180000), ymd_hms(20181123120000)), date_labels = "%H Z\n%b %d", date_breaks = "12 hours") +
+  facet_wrap(~umbral, scales = "free_y", 
+             labeller = labeller(umbral = c("1" = "1 mm", "5" = "5 mm", 
+                                            "10" = "10 mm", "25" = "25 mm"))) +
+  labs(y = "Areal coverage", x = "Date", 
+       fill = NULL, color = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+files <- Sys.glob("/home/paola.corrales/mesoda/analysis/data/derived_data/fss_6h_ana_ens_E*[1-9]*.csv")   
+
+fss <- purrr::map(files, function(f) {
+  
+  fread(f) %>% 
+    .[, date := as_datetime(date)]
+}) %>% 
+  rbindlist()
+
+fss %>% 
+  .[w %in% c(1, 11) & q %in% c(1, 5, 25) & exp %in% c("E6", "E9", "E10", "EG3")] %>% 
+  # .[date %between% c(ymd_hms(20181122000000), ymd_hms(20181123120000))] %>% 
+  ggplot(aes(date, fss)) +
+  geom_hline(yintercept = 1, color = "darkgray") +
+  geom_line(aes(color = exp)) +
+  # geom_point(aes(color = exp)) +
+  scale_color_manual(values = c(colores_exp, EG3 = "blue"), 
+                     labels = c(E2 = "CONV", E5 = "ASWS", 
+                                E6 = "SATWND", EG3 = "only ABI",
+                                E9 = "RAD", E10 = "ABI")) +
+  scale_date(20181122000000, 20181123000000, "12 hours") +
+  coord_cartesian(xlim = c(ymd_hms(20181122000000), ymd_hms(20181123120000))) +
+  facet_grid(w~q, labeller = labeller(q = c("1" = "1 mm", "5" = "5 mm", 
+                                            "10" = "10 mm", "25" = "25 mm"),
+                                      w = c("1" = "10 km", "5" = "50 km", "11" = "100 km", 
+                                            "51" = "500 km", "101" = "1000 km"))) +
+  tagger::tag_facets(position = list(x = 0.05, y = 0.90)) +
+  labs(color = NULL, x = NULL, y = "FSS") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+imerg <- readRDS("/home/paola.corrales/mesoda/analysis/data/derived_data/IMERG_1h.rds") %>% 
+  .[, c("lon", "lat") := wrf_project(x, y, inverse = TRUE, round = FALSE)] %>% 
+  .[, ":="(exp = "OBS")] %>% 
+  setnames(c("end_date", "pp_acum"), c("date", "pp"))
+
+pp_files <- Sys.glob("/home/paola.corrales/datosmunin3/EXP/derived_data/ppacum/E*[139]*_ana_20181122*_pp_pmm.rds")
+
+pp <- map(pp_files, readRDS) %>% 
+  rbindlist() %>% 
+  .[, c("lon", "lat") := wrf_project(x, y, inverse = TRUE, round = FALSE)] %>% 
+  .[, ":="(rank = NULL, ens_mean = NULL)] %>% 
+  setnames(c("pp_pmm"), c("pp"))
+
+
+rbind(imerg, pp) %>% 
+  .[date %in% ymd_hms(20181122060000, 20181122120000) & pp > 0.1] %>% 
+  .[, date := factor(date)] %>% 
+  ggplot(aes(x, y)) +
+  geom_contour_fill(aes(z = pp, fill = stat(level)), 
+                    proj = norargentina_lambert,
+                    breaks = c(-Inf, seq(5, 50, 5), Inf)) +
+  geom_contour2(aes(z = pp), color = "red", 
+                size = 0.3,
+                proj = norargentina_lambert,
+                breaks = c(5)) +
+  scale_fill_distiller(palette = "YlGnBu",
+                       direction = 1,
+                       labels = function(x) JumpBy(x, 2, fill = ""),
+                       super = ScaleDiscretised,
+                       guide = guide_colorsteps(barwidth = 25,
+                                                barheight = 0.3, 
+                                                title.position = "left", 
+                                                title.vjust = 1,
+                                                frame.colour = "black")) +
+  geom_mapa() +
+  coord_sf(xlim = c(-76, -52), ylim = c(-41, -30)) +
+  facet_grid(date~exp) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+
+
+```
+
+```{r}
+files <- Sys.glob("/home/paola.corrales/datosmunin3/EXP/derived_data/ppacum/E*[1369]*_ana*_pp_pmm.rds")
+
+ppacum_1h <- purrr::map(files, function(f) {
+  
+  readRDS(f)
+  # %>% 
+  #   .[, c("lon", "lat") := wrf_project(x, y, inverse = TRUE, round = FALSE)]
+  
+}) %>% rbindlist() %>% 
+  .[x %between% c(-300000, 800000) & y %between% c(-800000, 1090000)] 
+
+
+readRDS("/home/paola.corrales/mesoda/analysis/data/derived_data/IMERG_1h.rds") %>% 
+  .[, c("lon", "lat") := wrf_project(x, y, inverse = TRUE, round = FALSE)] %>% 
+  .[x %between% c(-300000, 800000) & y %between% c(-800000, 1090000)] %>% 
+  .[end_date %between% c(as_datetime("20181122000000"), as_datetime("20181123120000"))] %>% 
+  .[, .(pp_acum = mean(pp_acum),
+        lat = mean(lat),
+        exp = "IMERG"), by = .(end_date, y)] %>% 
+  ggplot(aes(end_date, lat)) +
+  geom_contour_fill(aes(z = pp_acum, fill = stat(level)), breaks = c(seq(0.5, 13, 0.5), Inf)) +
+  geom_contour2(aes(z = pp_acum), color = "black", size = 0.02, breaks = seq(0.5, 13, 0.5)) +
+  # scale_fill_viridis_c(option = "A",
+  scale_fill_distiller(palette = "YlGnBu",
+                       direction = 1,
+                       labels = function(x) JumpBy(x, 2, fill = ""),
+                       super = ScaleDiscretised,
+                       guide = guide_colorsteps(barwidth = 25,
+                                                barheight = 0.3, 
+                                                title.position = "left", 
+                                                title.vjust = 1,
+                                                frame.colour = "black")) +
+  scale_date(ini = 20181121000000, break_bin = "12 hours") +
+  scale_y_latitude(breaks = seq(-40, -20, 5)) +
+  facet_wrap(~ exp) +
+  labs(x = NULL, y = NULL, fill = latex2exp::TeX("Acumulated\nprecipitation ($mmh^{-1}$)")) +
+  theme_minimal(base_size = 9) +
+  theme(legend.position = "bottom",
+        tagger.panel.tag.text = element_text(size = 9)) +
+  
+  ppacum_1h %>% 
+  .[date %between% c(as_datetime("20181122000000"), as_datetime("20181123120000"))] %>% 
+  .[exp %in% c("E6", "E9", "E10", "EG3")] %>%
+  .[, lat := lat[1], by = .(y)] %>% 
+  .[, .(pp_acum = mean(pp_pmm)), by = .(exp, date, y, lat)] %>% 
+  .[, exp := fct_relevel(exp, c("E6", "E9", "E10"))] %>% 
+  ggplot(aes(date, lat)) +
+  geom_contour_fill(aes(z = pp_acum, fill = stat(level)), breaks = c(seq(0.5, 13, 0.5), Inf)) +
+  geom_contour2(aes(z = pp_acum), color = "black", size = 0.02, breaks = seq(0.5, 13, 0.5)) +
+  # scale_fill_viridis_c(option = "A",
+  scale_fill_distiller(palette = "YlGnBu",
+                       direction = 1,
+                       labels = function(x) JumpBy(x, 2, fill = ""),
+                       super = ScaleDiscretised,
+                       guide = guide_colorsteps(barwidth = 25,
+                                                barheight = 0.3, 
+                                                title.position = "left", 
+                                                title.vjust = 1,
+                                                frame.colour = "black")) +
+  scale_date(ini = 20181121000000, break_bin = "12 hours") +
+  scale_y_latitude(breaks = seq(-40, -20, 5), labels = NULL) +
+  facet_wrap(~ exp, ncol = 5, labeller = labeller(exp = c(E6 = "SATWND", E9 = "RAD",
+                                                          E10 = "ABI", EG3 = "only ABI"))) +
+  labs(x = NULL, y = NULL, fill = latex2exp::TeX("Acumulated\nprecipitation ($mmh^{-1}$)")) +
+  theme_minimal(base_size = 9) +
+  theme(legend.position = "bottom",
+        tagger.panel.tag.text = element_text(size = 9)) +
+  
+  plot_layout(ncol = 2, widths = c(0.25, 0.75), guides = "collect") & theme(legend.position = 'bottom')
+```
+
+```{r}
+files <- Sys.glob("/home/paola.corrales/datosmunin3/EXP/derived_data/perfiles_ana*")
+
+perfiles <- purrr::map(files, function(f) {
+  exp <- unglue(basename(f), "perfiles_{run}_{exp}.csv")
+  fread(f) %>% 
+    .[, exp := exp[[1]][["exp"]]]
+  
+}) %>% 
+  rbindlist() %>% 
+  .[, date := as_datetime(date)] %>% 
+  .[date %between% c(as_datetime("2018-11-20 18:00:00"),
+                     as_datetime("2018-11-23 12:00:00"))]
+
+
+perfiles %>% 
+  dcast(lev + date ~ exp, value.var = "T") %>% 
+  .[, ":="(E9_E6 = E9 - E6,
+           E10_E9 = E10 - E9)] %>% 
+  melt(measure.vars = c("E9_E6", "E10_E9")) %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = value, fill = stat(level)),
+                    breaks = c(seq(-2, 2, 0.2), Inf)) +
+  geom_contour2(aes(z = value), color = "white", size = 0.1,
+                breaks = c(seq(-2, 2, 0.2), Inf)) +
+  scale_fill_divergent_discretised(guide = guide_colorsteps(barwidth = 25,
+                                                            barheight = 0.3,
+                                                            title.position = "left", 
+                                                            title.vjust = 1,
+                                                            frame.colour = "black")) +
+  labs(fill = "Temperature (K)",
+       x = NULL,
+       y = NULL) +
+  scale_y_level(breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
+  scale_date(ini = 20181121000000, break_bin = "12 hours") +
+  facet_wrap(~variable, ncol = 2,
+             labeller = labeller(variable = c("E9_E6" = "RAD - SATWND",
+                                              "E10_E9" = "ABI - RAD"))) +
+  tag_facets(position = list(x = 0.1, y = 0.96)) +
+  theme_minimal(base_size = 8) +
+  theme(legend.position = "bottom",
+        tagger.panel.tag.text = element_text(size = 8),
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3)) +
+  
+  
+  perfiles %>% 
+  dcast(lev + date ~ exp, value.var = "QVAPOR") %>% 
+  .[, ":="(E9_E6 = E9 - E6,
+           E10_E9 = E10 - E9)] %>% 
+  melt(measure.vars = c("E9_E6", "E10_E9")) %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = value*1000, fill = stat(level)), 
+                    breaks = c(seq(-1.6, 1.6, 0.2), Inf)) +
+  geom_contour2(aes(z = value), color = "white", size = 0.1,
+                breaks = c(seq(-1.6, 1.6, 0.2), Inf)) +
+  scale_fill_divergent_discretised(limits = c(-1.6, 1.6),
+                                   guide = guide_colorsteps(barwidth = 25,
+                                                            barheight = 0.3, 
+                                                            title.position = "left", 
+                                                            title.vjust = 1,
+                                                            frame.colour = "black")) +
+  
+  scale_y_level(breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
+  scale_date(ini = 20181121000000, break_bin = "12 hours") +
+  labs(fill = latex2exp::TeX("Specific \nhumidity ($gKg^{-1}$)"),
+       y = NULL,
+       x = NULL) +
+  facet_wrap(~variable, ncol = 2,
+             labeller = labeller(variable = c("E9_E6" = "RAD - SATWND",
+                                              "E10_E9" = "ABI - RAD"))) +
+  tag_facets(tag_pool = c("d", "e", "f"), position = list(x = 0.1, y = 0.96)) +
+  theme_minimal(base_size = 8) +
+  theme(legend.position = "bottom",
+        tagger.panel.tag.text = element_text(size = 8),
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3)) +
+  
+  plot_layout(ncol = 1, heights = c(1, 1))
+```
+
+```{r}
+files <- Sys.glob("/home/paola.corrales/datosmunin3/EXP/derived_data/perfiles_*_E[169]*")[1:6]
+
+perfiles <- purrr::map(files, function(f) {
+  exp <- unglue(basename(f), "perfiles_{run}_{exp}.csv")
+  fread(f) %>% 
+    .[, run := exp[[1]][["run"]]] %>% 
+    .[, exp := exp[[1]][["exp"]]] 
+  
+  
+}) %>% 
+  rbindlist() %>% 
+  .[, date := as_datetime(date)] %>% 
+  .[date %between% c(as_datetime("2018-11-20 18:00:00"),
+                     as_datetime("2018-11-23 12:00:00"))]
+
+
+perfiles %>% 
+  dcast(lev + date + exp ~ run, value.var = "T") %>% 
+  .[lev < 900] %>% 
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = ana - guess, fill = stat(level)),
+                    breaks = c(seq(-0.2, 0.2, 0.02))) +
+  # geom_contour2(aes(z = ana - guess), color = "white", size = 0.1,
+  #               breaks = c(seq(-2, 2, 0.2), Inf)) +
+  scale_fill_divergent_discretised(limits = c(-0.2, 0.2),
+                                   guide = guide_colorsteps(barwidth = 25,
+                                                            barheight = 0.3,
+                                                            title.position = "left", 
+                                                            title.vjust = 1,
+                                                            frame.colour = "black")) +
+  labs(fill = "Temperature (K)",
+       x = NULL,
+       y = "Pressure (hPa)") +
+  scale_y_level(breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
+  scale_date(ini = 20181121000000, break_bin = "12 hours") +
+  facet_wrap(~exp, ncol = 3,
+             labeller = labeller(exp = c("E6" = "SATWND",
+                                         "E9" = "RAD",
+                                         "E10" = "ABI"))) +
+  tag_facets(position = list(x = 0.1, y = 0.96)) +
+  theme_minimal(base_size = 8) +
+  theme(legend.position = "bottom",
+        tagger.panel.tag.text = element_text(size = 8),
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3)) +
+  
+  
+  perfiles %>% 
+  dcast(lev + date + exp ~ run, value.var = "QVAPOR") %>% 
+  .[lev < 800] %>%
+  ggplot(aes(date, lev)) +
+  geom_contour_fill(aes(z = (ana - guess)*1000, fill = stat(level))) +
+  # geom_contour2(aes(z = value), color = "white", size = 0.1,
+  #               breaks = c(seq(-1.6, 1.6, 0.2), Inf)) +
+  scale_fill_divergent_discretised(limits = c(-0.3, 0.1),
+                                   guide = guide_colorsteps(barwidth = 25,
+                                                            barheight = 0.3, 
+                                                            title.position = "left", 
+                                                            title.vjust = 1,
+                                                            frame.colour = "black")) +
+  
+  scale_y_level(breaks = c(1000, 850, 750, 500, 300, 200, 100)) +
+  scale_date(ini = 20181121000000, break_bin = "12 hours") +
+  labs(fill = latex2exp::TeX("Specific \nhumidity ($gKg^{-1}$)"),
+       y = "Pressure (hPa)",
+       x = NULL) +
+  facet_wrap(~exp, ncol = 3,
+             labeller = labeller(exp = c("E6" = "SATWND",
+                                         "E9" = "RAD",
+                                         "E10" = "ABI"))) +
+  tag_facets(tag_pool = c("d", "e", "f"), position = list(x = 0.1, y = 0.96)) +
+  theme_minimal(base_size = 8) +
+  theme(legend.position = "bottom",
+        tagger.panel.tag.text = element_text(size = 8),
+        panel.ontop = TRUE,
+        panel.grid = element_line(linetype = 3)) +
+  
+  plot_layout(ncol = 1, heights = c(1, 1))
+```
+
+```{r}
+files <- Sys.glob("/home/paola.corrales/datosmunin3/EXP/derived_data/sondeos/ANA/sondeo_E*[1369]*_ana*")
+
+sondeos <- purrr::map(files, function(f){
+  
+  fread(f) %>% 
+    .[, value := fifelse(variable %in% c("t", "td"), value + 273.15, value)] %>% 
+    .[, launch_time := as_datetime(launch_time)]
+  
+}) %>% 
+  rbindlist()
+
+IOP <- tribble(
+  ~iop, ~ini, ~end,
+  "IOP07", ymd_hms("20181121150000"), ymd_hms("20181121210000"),
+  "IOP08", ymd_hms("20181122140000"), ymd_hms("20181122200000")
+) %>% setDT()
+
+colours <- c(E6 = "#EE7733", 
+             E9 = "#CC3311", E10 = "chartreuse4", EG3 = "blue")
+
+sondeos %>% 
+  .[, iop := fcase(launch_time %between% c(ymd_hms("20181121150000"), ymd_hms("20181121210000")), "IOP07",
+                   launch_time %between% c(ymd_hms("20181122140000"), ymd_hms("20181122200000")), "IOP08")] %>% 
+  .[variable %in% c("t", "td", "u", "v") & !str_detect(site, "/") & !is.na(fcst_value) & !is.na(iop)] %>% 
+  .[site != "Sao Borja, Brazil"] %>% 
+  .[, lev := cut_round(alt, c(seq(0, 3000, 500), seq(4000, 21000, 1000)))] %>% 
+  .[, ":="(RMSE = mean(sqrt((fcst_value - value)^2), na.rm = TRUE), 
+           BIAS = mean(fcst_value - value, na.rm = TRUE)), by = .(iop, exp, variable, lev)] %>% 
+  melt(measure.vars = c("RMSE", "BIAS"), variable.name = "estadistico", value.name = "value.est") %>% 
+  .[lev <= 15000 & exp %in% c("E6", "E9", "E10", "EG3")] %>% 
+  ggplot(aes(lev/1000, value.est)) +
+  geom_hline(yintercept = 0, color = "grey30") +
+  geom_line(aes(color = exp, linetype = estadistico)) +
+  scale_color_manual(values = colours, 
+                     labels = c(E6 = "SATWND", E9 = "RAD", 
+                                E10 = "ABI", EG3 = "only ABI")) +
+  coord_flip() +
+  facet_grid(iop~variable, scales = "free_x", 
+             labeller = labeller(variable = c("t" = "a) Temperature",
+                                              "td" = "b) Dew point temperature",
+                                              "u" = "c) U wind",
+                                              "v" = "d) V wind"),
+                                 iop = c("IOP07" = "IOP 7",
+                                         "IOP08" = "IOP 8"))) +
+  labs(y = NULL, x = "Height (Km)", color = NULL, linetype = NULL) +
+  theme_minimal(base_size = 9) +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+satinfo <- fread(here("analysis", "data", "derived_data", "new_satinfo.txt")) %>% 
+  setnames(c("!sensor/instr/sat", "chan"), c("sensor", "channel"))
+
+
+files_diag <- Sys.glob("~/datosmunin3/EXP/E[19]*/ANA/20181122060000/diagfiles/asim*")
+
+files_diag <- files_diag[!str_detect(files_diag, "conv")]
+
+rad <- map(files_diag, function(f) {
+  
+  meta <- unglue(f, "/home/paola.corrales/datosmunin3/EXP/{exp}/ANA/20181122060000/diagfiles/asim_{sensor}_20181122060000.ensmean")
+  
+  read_diag_rad(f, meta[[1]][["exp"]]) %>% 
+    .[, channel := fifelse(sensor == "abi_g16", channel + 6, channel)] %>% 
+    satinfo[., on = c("sensor", "channel")] %>% 
+    .[]
+}) %>% 
+  rbindlist()
+
+
+rad %>% 
+  .[channel %in% c(8:10) & iuse > 0 & qc == 0] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = tbc)) +
+  scale_color_divergent() +
+  geom_mapa() +
+  facet_grid(sensor~exp + channel) +
+  labs(x = NULL, y = NULL, color = "OmB")
+
+```
+
+
+```{r}
+
+files_diag <- Sys.glob("~/datosmunin3/EXP/E[19]*/ANA/20181122120000/diagfiles/asim*")
+
+files_diag <- files_diag[!str_detect(files_diag, "conv")]
+
+rad <- map(files_diag, function(f) {
+  
+  meta <- unglue(f, "/home/paola.corrales/datosmunin3/EXP/{exp}/ANA/20181122120000/diagfiles/asim_{sensor}_20181122120000.ensmean")
+  
+  read_diag_rad(f, meta[[1]][["exp"]]) %>% 
+    .[, channel := fifelse(sensor == "abi_g16", channel + 6, channel)] %>% 
+    satinfo[., on = c("sensor", "channel")] %>% 
+    .[]
+}) %>% 
+  rbindlist()
+
+rad %>% 
+  .[iuse > 0 & qc == 0, .N, by = .(sensor, exp)]
+
+
+rad %>% 
+  .[sensor == "iasi_metop-a" &iuse > 0 & qc == 0 & abs(tbc) > 3] %>% 
+  ggplot(aes(ConvertLongitude(lon), lat)) +
+  geom_point(aes(color = tbc)) +
+  scale_color_divergent() +
+  geom_mapa() +
+  facet_grid(sensor~exp) +
+  labs(x = NULL, y = NULL, color = "OmB")
+
+```
+
+```{r}
+files_tb <- Sys.glob("~/datosmunin3/EXP/derived_data/CRTM/*/*/G*")
+
+tb <- map(files_tb, function(f){
+  
+  meta <- unglue(f, "/home/paola.corrales/datosmunin3/EXP/derived_data/CRTM/{exp}/{run}/G16_{date}_001_00.nc")
+  
+  ReadNetCDF(f, vars = c(lon = "XLONG", lat = "XLAT", "CH13")) %>% 
+    .[, ":="(date = meta[[1]][["date"]],
+             exp = meta[[1]][["exp"]],
+             run = meta[[1]][["run"]])]
+  
+  
+}) %>% 
+  rbindlist()
+
+tb %>% 
+  .[date %in% c("20181122180000", "20181122170000", "20181122120000", "20181122110000")] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(color = CH13 - 273.15)) +
+  scale_color_topes() +
+  geom_mapa() +
+  coord_sf(xlim = range(tb$lon), ylim = range(tb$lat)) +
+  facet_grid(exp ~ date  + run) +
+  labs(subtitle = "Channel 13", color = "TB (C)", x = NULL, y = NULL) +
+  theme_minimal()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

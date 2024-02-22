@@ -48,9 +48,14 @@ El $CR$ debería ser cercano a 1, un $CR < 1$ indica que el ensamble tiene un sp
 ### Implementacion
 
 ```{r include=FALSE}
-path <- "analisis/diagfiles/E5/asim_conv_2018112*"
+path <- "/home/paola.corrales/datosmunin/EXP/E8/ANA/*/diagfiles/asim_conv_2018112*"
 
-perfiles <- read_diag(path, variable = c("uv", "t")) %>%
+perfiles <- read_diag(path, variable = c("t")) %>%
+  .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]
+
+path <- "/home/paola.corrales/datosmunin/EXP/E6/ANA/*/diagfiles/asim_conv_2018112*"
+
+perfiles <- read_diag(path, variable = c("uv")) %>%
   .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]
 
 # cr <- get_cr(perfiles[type %in% c(181, 187, 281, 287)], tipo = c("superficie", "temporal"))
@@ -186,6 +191,34 @@ El sistema de pronóstico por ensamble será confiable si $b=0$ es decir, sin bi
 # RCRV <- get_RCRV(perfiles[type %in% c(120, 130, 131, 133, 220, 230, 231, 233)], tipo = c("perfil"))
 # 
 # fwrite(RCRV, "rcrv_uvt_perfil.csv")
+
+perfiles[type %in% c(181, 187, 281, 287)] %>%
+  .[, var := fifelse(var == "u", "v", var)] %>% 
+  # .[]
+  mesoda::get_RCRV(tipo.var = "superficie", calculo = c("box")) %>% 
+  fwrite("rcrv_V_box.csv")
+
+
+perfiles[type %in% c(231, 233, 220)] %>%
+  .[, var := fifelse(var == "u", "v", var)] %>% 
+  .[, error.level := nivel.error] %>% 
+  mesoda::get_RCRV(tipo.var = "perfil", calculo = c("unico")) %>%
+  fwrite("rcrv_V_perfil.csv")
+
+
+perfiles[type %in% c(181, 187)] %>%
+  .[, var := fifelse(var == "u", "v", var)] %>% 
+  # .[]
+  mesoda::get_RCRV(tipo.var = "superficie", calculo = c("box")) %>% 
+  fwrite("rcrv_t_box.csv")
+
+
+perfiles[type %in% c(131, 133, 120)] %>%
+  .[, var := fifelse(var == "u", "v", var)] %>% 
+  .[, error.level := nivel.error] %>% 
+  mesoda::get_RCRV(tipo.var = "perfil", calculo = c("unico")) %>%
+  fwrite("rcrv_t_perfil.csv")
+
 ```
 
 ### Implementación

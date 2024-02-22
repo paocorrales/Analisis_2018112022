@@ -361,7 +361,7 @@ obs[, inf := !is.finite(rerr)] %>%
 
 ```{r message=FALSE, warning=FALSE}
 source("help_functions.R")
-path <- "analisis/diagfiles/E1/asim_conv_2018112*"
+path <- "/home/paola.corrales/datosmunin/EXP/E6/ANA/*/diagfiles/asim_conv_2018112*"
 
 perfiles <- read_diag(path, variable = c("uv")) %>%
   .[, c("error", "nivel.error") := input_obs_error(var, type, pressure)]

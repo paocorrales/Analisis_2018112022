@@ -43,16 +43,16 @@ En el caso de la humedad, el update es importante en niveles bajos solamente con
 
 
 ```{r echo=FALSE, warning=FALSE}
-E5_tq <- fread("analisis/perfil_lev_T_Q_ana_E5.csv") %>% 
-  .[fread("analisis/perfil_lev_T_Q_guess_E5.csv"), on = c("lev", "date")] %>% 
+E5_tq <- fread("~/datosmunin/EXP/analisis/perfil_lev_T_Q_ana_E5.csv") %>% 
+  .[fread("~/datosmunin/EXP/analisis/perfil_lev_T_Q_guess_E5.csv"), on = c("lev", "date")] %>% 
   .[, date := ymd_hms(date)] %>% 
   setnames(c("T", "QVAPOR", "i.T", "i.QVAPOR"), c("T_ana", "Q_ana", "T_guess", "Q_guess")) %>% 
   .[, `:=`(T_update = T_ana - T_guess,
            Q_update = Q_ana - Q_guess,
            exp = "CONV+AUT")]
 
-E4_tq <- fread("analisis/perfil_lev_T_Q_ana_E4.csv") %>% 
-  .[fread("analisis/perfil_lev_T_Q_guess_E4.csv"), on = c("lev", "date")] %>% 
+E4_tq <- fread("~/datosmunin/EXP/analisis/perfil_lev_T_Q_ana_E4.csv") %>% 
+  .[fread("~/datosmunin/EXP/analisis/perfil_lev_T_Q_guess_E4.csv"), on = c("lev", "date")] %>% 
   .[, date := ymd_hms(date)] %>% 
   setnames(c("T", "QVAPOR", "i.T", "i.QVAPOR"), c("T_ana", "Q_ana", "T_guess", "Q_guess")) %>% 
   .[, `:=`(T_update = T_ana - T_guess,
